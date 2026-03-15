@@ -27,7 +27,7 @@ def _fmt(q: str, a: str) -> str:
 
 
 def _load_csv(path: str) -> list[str]:
-    df = pd.read_csv(path, dtype=str).fillna("")
+    df = pd.read_csv(path, dtype=str, on_bad_lines="skip", quoting=0).fillna("")
     cols_low = {c.lower(): c for c in df.columns}
     q_col = next((cols_low[c] for c in cols_low if c in Q_COLS), None)
     a_col = next((cols_low[c] for c in cols_low if c in A_COLS), None)
