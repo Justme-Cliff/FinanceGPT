@@ -5,6 +5,7 @@ import random
 import pandas as pd
 import torch
 from torch.utils.data import Dataset
+from tqdm import tqdm
 
 from tokenizer import BPETokenizer
 
@@ -56,13 +57,14 @@ def load_all_csv(data_dir: str = "data", specific: str = None) -> list[str]:
         ]
     )
     texts = []
-    for p in paths:
+    pbar = tqdm(paths, desc="  Loading CSVs", ncols=82, unit="file")
+    for p in pbar:
         if not os.path.exists(p):
-            print(f"  [warn] {p} not found, skipping.")
+            tqdm.write(f"  [warn] {p} not found, skipping.")
             continue
         batch = _load_csv(p)
         texts.extend(batch)
-        print(f"  Loaded {len(batch):>4} samples  ← {os.path.basename(p)}")
+        pbar.set_postfix(file=os.path.basename(p), samples=len(batch))
     return texts
 
 
@@ -87,7 +89,7 @@ def make_datasets(texts: list[str],
                   val_split: float = 0.10):
     """Tokenise all texts and split into train / validation datasets."""
     all_ids: list[int] = []
-    for t in texts:
+    for t in tqdm(texts, desc="  Tokenising", ncols=82, unit="sample"):
         all_ids.extend(tokenizer.encode(t, add_special=True))
 
     data = torch.tensor(all_ids, dtype=torch.long)

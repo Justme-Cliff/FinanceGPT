@@ -14,6 +14,7 @@ import os
 import re
 from collections import Counter
 from typing import List, Dict, Tuple
+from tqdm import tqdm
 
 
 SPECIAL = {"<PAD>": 0, "<UNK>": 1, "<BOS>": 2, "<EOS>": 3, "<SEP>": 4}
@@ -63,6 +64,9 @@ class BPETokenizer:
         current_vocab = set(char_vocab) | set(SPECIAL.keys())
 
         target = vocab_size - len(SPECIAL)
+        n_merges = target - len(current_vocab)
+        pbar = tqdm(total=n_merges, desc="  BPE merges", ncols=82,
+                    unit="merge", dynamic_ncols=False)
         while len(current_vocab) < target:
             pairs: Counter = Counter()
             for word, freq in word_freq.items():
@@ -77,6 +81,7 @@ class BPETokenizer:
             merged = "".join(best)
             merge_list.append(best)
             current_vocab.add(merged)
+            pbar.update(1)
 
             # Apply merge across all words
             for word in splits:
@@ -93,6 +98,7 @@ class BPETokenizer:
                         new.append(syms[i])
                         i += 1
                 splits[word] = new
+        pbar.close()
 
         # 4. Build final vocab
         self.vocab = dict(SPECIAL)
