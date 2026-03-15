@@ -1,0 +1,56 @@
+# ── Claude Code ────────────────────────────────────────────────────────
+.claude/
+CLAUDE.md
+
+# ── Model checkpoints & training artifacts ─────────────────────────────
+checkpoints/
+training_plots/
+
+# ── Python ─────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+parts/
+var/
+sdist/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+.installed.cfg
+*.egg-link
+MANIFEST
+
+# ── Virtual environments ────────────────────────────────────────────────
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# ── IDE & editors ──────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ── Jupyter ────────────────────────────────────────────────────────────
+.ipynb_checkpoints
+*.ipynb
+
+# ── Logs & temp ────────────────────────────────────────────────────────
+*.log
+*.tmp
+*.bak
