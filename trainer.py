@@ -13,6 +13,7 @@ Features
 * 4 publication-quality training plots.
 """
 
+import contextlib
 import json
 import math
 import os
@@ -140,7 +141,7 @@ def save_plots(history: dict):
 def evaluate(model, loader, device, label_smoothing, use_amp):
     model.eval()
     total_loss, n = 0.0, 0
-    ctx = torch.autocast(device.type, dtype=torch.float16) if use_amp else torch.no_grad()
+    ctx = torch.autocast(device.type, dtype=torch.float16) if use_amp else contextlib.nullcontext()
     for x, y in loader:
         x, y = x.to(device), y.to(device)
         with ctx:
@@ -157,6 +158,9 @@ def train(csv_file: str = None):
     device    = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     use_amp   = TRAIN_CONFIG["mixed_precision"] and device.type == "cuda"
     scaler    = torch.cuda.amp.GradScaler(enabled=use_amp)
+
+    # Use all CPU cores for faster CPU-side ops
+    torch.set_num_threads(os.cpu_count() or 4)
 
     sep_line = "═" * 62
     print(f"\n{sep_line}")
@@ -195,10 +199,13 @@ def train(csv_file: str = None):
         block_size=TRAIN_CONFIG["block_size"],
         val_split=TRAIN_CONFIG["val_split"],
     )
+    pin = device.type == "cuda"
     train_loader = DataLoader(train_ds, batch_size=TRAIN_CONFIG["batch_size"],
-                              shuffle=True,  drop_last=True,  num_workers=0)
+                              shuffle=True,  drop_last=True,  num_workers=0,
+                              pin_memory=pin)
     val_loader   = DataLoader(val_ds,   batch_size=TRAIN_CONFIG["batch_size"],
-                              shuffle=False, drop_last=False, num_workers=0)
+                              shuffle=False, drop_last=False, num_workers=0,
+                              pin_memory=pin)
 
     # ── Model ─────────────────────────────────────────────────────────
     print("\n[4/5] Model…")
@@ -255,8 +262,6 @@ def train(csv_file: str = None):
             for pg in optimizer.param_groups:
                 pg["lr"] = lr
 
-            ctx = (torch.autocast(device.type, dtype=torch.float16)
-                   if use_amp else torch.no_grad().__class__())
             if use_amp:
                 with torch.autocast(device.type, dtype=torch.float16):
                     _, loss = model(x, y, label_smoothing=TRAIN_CONFIG["label_smoothing"])

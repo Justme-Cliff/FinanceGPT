@@ -1,6 +1,5 @@
 # ── Claude Code ────────────────────────────────────────────────────────
 .claude/
-CLAUDE.md
 
 # ── Model checkpoints & training artifacts ─────────────────────────────
 checkpoints/

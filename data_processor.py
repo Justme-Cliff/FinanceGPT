@@ -69,17 +69,24 @@ def load_all_csv(data_dir: str = "data", specific: str = None) -> list[str]:
 
 
 class FinanceDataset(Dataset):
-    """Sliding-window token dataset with train/val split support."""
+    """Sliding-window block dataset with configurable stride.
 
-    def __init__(self, tokens: torch.Tensor, block_size: int):
+    stride=block_size // 2 gives 50% overlap → 2× more samples and no
+    boundary bleed between blocks.
+    """
+
+    def __init__(self, tokens: torch.Tensor, block_size: int, stride: int = None):
         self.data       = tokens
         self.block_size = block_size
+        self.stride     = stride if stride is not None else block_size
 
     def __len__(self):
-        return max(0, len(self.data) - self.block_size)
+        # +1 so the last full window is always included
+        return max(0, (len(self.data) - self.block_size - 1) // self.stride + 1)
 
     def __getitem__(self, idx):
-        chunk = self.data[idx : idx + self.block_size + 1]
+        start = idx * self.stride
+        chunk = self.data[start : start + self.block_size + 1]
         return chunk[:-1], chunk[1:]
 
 
@@ -92,30 +99,13 @@ def make_datasets(texts: list[str],
     for t in tqdm(texts, desc="  Tokenising", ncols=82, unit="sample"):
         all_ids.extend(tokenizer.encode(t, add_special=True))
 
-    data = torch.tensor(all_ids, dtype=torch.long)
-    n_val = max(block_size + 1, int(len(data) * val_split))
+    data   = torch.tensor(all_ids, dtype=torch.long)
+    split  = int(len(data) * (1 - val_split))
+    stride = block_size
 
-    # Shuffle at block level (not token level) to preserve context
-    n_blocks = len(data) // block_size
-    idx      = list(range(n_blocks))
-    random.shuffle(idx)
-    val_blocks  = set(idx[:max(1, int(n_blocks * val_split))])
-    train_ids, val_ids = [], []
-    for i in range(n_blocks):
-        seg = data[i * block_size : (i + 1) * block_size + 1].tolist()
-        if len(seg) < block_size + 1:
-            continue
-        if i in val_blocks:
-            val_ids.extend(seg[:-1])
-        else:
-            train_ids.extend(seg[:-1])
+    train_ds = FinanceDataset(data[:split], block_size, stride)
+    val_ds   = FinanceDataset(data[split:], block_size, stride)
 
-    t_data = torch.tensor(train_ids, dtype=torch.long)
-    v_data = torch.tensor(val_ids,   dtype=torch.long)
-
-    train_ds = FinanceDataset(t_data, block_size)
-    val_ds   = FinanceDataset(v_data, block_size)
-
-    print(f"  Train tokens: {len(t_data):,}  |  Val tokens: {len(v_data):,}")
-    print(f"  Train samples: {len(train_ds):,}  |  Val samples: {len(val_ds):,}")
+    print(f"  Tokens: {split:,} train | {len(data) - split:,} val")
+    print(f"  Samples: {len(train_ds):,} train | {len(val_ds):,} val")
     return train_ds, val_ds
