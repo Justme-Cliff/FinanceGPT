@@ -17,6 +17,7 @@ import contextlib
 import json
 import math
 import os
+import sys
 import time
 
 import matplotlib
@@ -143,7 +144,7 @@ def evaluate(model, loader, device, label_smoothing, use_amp):
     total_loss, n = 0.0, 0
     ctx = torch.autocast(device.type, dtype=torch.float16) if use_amp else contextlib.nullcontext()
     for x, y in loader:
-        x, y = x.to(device), y.to(device)
+        x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
         with ctx:
             _, loss = model(x, y, label_smoothing=label_smoothing)
         total_loss += loss.item()
@@ -200,12 +201,19 @@ def train(csv_file: str = None):
         val_split=TRAIN_CONFIG["val_split"],
     )
     pin = device.type == "cuda"
+    # Use persistent_workers to avoid re-spawning worker processes each epoch
+    # (only with num_workers > 0; on CPU we keep 0 to avoid multiprocessing overhead)
+    n_workers = min(2, os.cpu_count() or 1) if device.type == "cuda" else 0
+    loader_kw = dict(
+        pin_memory=pin,
+        num_workers=n_workers,
+        persistent_workers=(n_workers > 0),
+        prefetch_factor=2 if n_workers > 0 else None,
+    )
     train_loader = DataLoader(train_ds, batch_size=TRAIN_CONFIG["batch_size"],
-                              shuffle=True,  drop_last=True,  num_workers=0,
-                              pin_memory=pin)
+                              shuffle=True,  drop_last=True,  **loader_kw)
     val_loader   = DataLoader(val_ds,   batch_size=TRAIN_CONFIG["batch_size"],
-                              shuffle=False, drop_last=False, num_workers=0,
-                              pin_memory=pin)
+                              shuffle=False, drop_last=False, **loader_kw)
 
     # ── Model ─────────────────────────────────────────────────────────
     print("\n[4/5] Model…")
@@ -234,6 +242,15 @@ def train(csv_file: str = None):
     model = model.to(device)
     print(f"  Parameters : {model.num_params():,}")
 
+    # torch.compile requires a C++ compiler (cl.exe on Windows) for Inductor.
+    # Skip on Windows to avoid RuntimeError when MSVC is not in PATH.
+    if sys.platform != "win32":
+        try:
+            model = torch.compile(model)
+            print("  torch.compile : enabled")
+        except Exception:
+            pass  # PyTorch < 2.0 or unsupported platform
+
     optimizer    = torch.optim.AdamW(
         model.parameters(), lr=TRAIN_CONFIG["lr"],
         weight_decay=0.1, betas=(0.9, 0.95),
@@ -257,7 +274,8 @@ def train(csv_file: str = None):
                     desc=f"Epoch {epoch:02d}/{TRAIN_CONFIG['epochs']}",
                     ncols=82)
         for step_in_epoch, (x, y) in enumerate(pbar, 1):
-            x, y = x.to(device), y.to(device)
+            # non_blocking=True overlaps CPU→GPU transfer with previous step's compute
+            x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
             lr   = _lr(global_step, total_steps, TRAIN_CONFIG)
             for pg in optimizer.param_groups:
                 pg["lr"] = lr

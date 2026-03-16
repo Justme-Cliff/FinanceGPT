@@ -11,15 +11,17 @@ import re
 
 _PATTERNS: list[tuple[str, str]] = [
     # Calculation — only when explicit compute/calculate verb is present
-    ("calculation",  r"\b(calculat|comput|how much\b|how many\b|formula\b|percentage\b|return on\b|roi\b|irr\b|npv\b|wacc\b|eps\b|ebitda\b)"),
+    ("calculation",  r"\b(calculat|comput|how much\b|how many\b|formula\b|percentage\b|return on\b|roi\b|irr\b|npv\b|wacc\b|eps\b|ebitda\b|mortgage payment|monthly payment|interest owe)"),
     # Risk checked before process so "how do I hedge" → risk
-    ("risk",         r"\b(risk\b|hedge\b|hedging\b|downside\b|drawdown\b|protect\b|insur\b|dangerous\b)"),
-    ("comparison",   r"\b(compar|versus\b|vs\.?\b|difference between|better than|worse than|prefer\b|choose between|pros and cons)"),
-    ("definition",   r"\b(what is\b|what are\b|define\b|explain\b|describe\b|mean by|tell me about)"),
-    ("causal",       r"\b(why\b|reason\b|cause\b|because\b|result of|impact of|effect of|consequence\b|lead to|due to)"),
-    ("strategy",     r"\b(should i\b|strategy\b|approach\b|best way|recommend\b|advice\b|plan\b)"),
-    ("process",      r"\b(how does\b|how do\b|process\b|mechanism\b|how to\b|procedure\b|steps to)"),
-    ("historical",   r"\b(histor|when did|what happened|crisis\b|crash\b|bubble\b|past\b)"),
+    ("risk",         r"\b(risk\b|hedge\b|hedging\b|downside\b|drawdown\b|protect\b|insur\b|dangerous\b|safe\b|lose money|worried about)"),
+    ("comparison",   r"\b(compar|versus\b|vs\.?\b|difference between|better than|worse than|prefer\b|choose between|pros and cons|or rent|or invest|or pay)"),
+    # Definition — expanded for natural language
+    ("definition",   r"\b(what is\b|what are\b|what'?s\b|define\b|explain\b|describe\b|mean by|tell me about|help me understand|i don'?t understand|can you explain|what does\b|what do\b|how does\b.*work|how do\b.*work)"),
+    ("causal",       r"\b(why\b|reason\b|cause\b|because\b|result of|impact of|effect of|consequence\b|lead to|due to|affect\b|influence\b)"),
+    # Strategy — expanded for conversational phrasing
+    ("strategy",     r"\b(should i\b|strategy\b|approach\b|best way|recommend\b|advice\b|plan\b|where do i start|how do i start|i want to\b|i have \$|i have \d|what should i\b|where should i\b|i'?m trying to|how can i\b|tips for\b|get started)"),
+    ("process",      r"\b(how does\b|how do\b|process\b|mechanism\b|how to\b|procedure\b|steps to|how would\b|walk me through|step by step)"),
+    ("historical",   r"\b(histor|when did|what happened|crisis\b|crash\b|bubble\b|past\b|used to\b|back in\b)"),
 ]
 
 _REASONING_SCAFFOLDS: dict[str, str] = {
@@ -61,12 +63,43 @@ _REASONING_SCAFFOLDS: dict[str, str] = {
     ),
 }
 
+# Conversational rephrasing normalization: maps informal query patterns to
+# canonical forms that match training data better.
+_REPHRASE_RULES: list[tuple[str, str]] = [
+    # "what's X" → "what is X"
+    (r"\bwhat'?s\b", "what is"),
+    # "how's X work" → "how does X work"
+    (r"\bhow'?s\b", "how does"),
+    # "i don't understand X" / "help me understand X" → "explain X"
+    (r"\bi don'?t understand\b", "explain"),
+    (r"\bhelp me understand\b", "explain"),
+    (r"\bcan you explain\b", "explain"),
+    # "tell me about X" — already caught by definition pattern but normalize
+    (r"\btell me about\b", "what is"),
+    # trailing question marks and filler words
+    (r"\bplease\b", ""),
+    (r"\bkind of\b", ""),
+    (r"\bsort of\b", ""),
+]
+
 
 class ReasoningEngine:
     """
     Decomposes questions, classifies intent, and builds a structured
     chain-of-thought context that primes the model for step-by-step reasoning.
     """
+
+    def normalize_query(self, question: str) -> str:
+        """
+        Normalize conversational phrasing to forms that better match training data.
+        Applies lightweight regex substitutions so informal queries find KB matches.
+        """
+        q = question.strip()
+        for pattern, replacement in _REPHRASE_RULES:
+            q = re.sub(pattern, replacement, q, flags=re.IGNORECASE)
+        # Collapse multiple spaces
+        q = re.sub(r" {2,}", " ", q).strip()
+        return q
 
     def classify(self, question: str) -> str:
         q_lower = question.lower()
@@ -100,7 +133,8 @@ class ReasoningEngine:
         Assemble the full reasoning context string and return
         (context_text, question_type).
         """
-        qtype = self.classify(question)
+        # Classify using normalized form for better pattern matching
+        qtype = self.classify(self.normalize_query(question))
         scaffold = _REASONING_SCAFFOLDS[qtype]
 
         lines: list[str] = []

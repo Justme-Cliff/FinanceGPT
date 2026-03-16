@@ -13,7 +13,7 @@ import math
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-from knowledge_base import KnowledgeBase
+from knowledge_base import KnowledgeBase, _REPHRASE_RULES
 from reasoning_engine import ReasoningEngine
 
 
@@ -28,7 +28,25 @@ class KnowledgeAgent:
     def run(self, query: str) -> dict:
         t0 = time.perf_counter()
         try:
+            # Search with both the original and normalized query; merge results
+            normalized = query
+            for pattern, replacement in _REPHRASE_RULES:
+                normalized = re.sub(pattern, replacement, normalized, flags=re.IGNORECASE)
+            normalized = re.sub(r" {2,}", " ", normalized).strip()
+
             results = self.kb.search(query, top_k=6)
+            if normalized != query:
+                extra = self.kb.search(normalized, top_k=6)
+                # Merge: add any extra results not already present (by question text)
+                seen = {r["question"] for r in results}
+                for r in extra:
+                    if r["question"] not in seen:
+                        results.append(r)
+                        seen.add(r["question"])
+                # Re-sort by score descending and keep top 6
+                results.sort(key=lambda x: -x["score"])
+                results = results[:6]
+
             return {
                 "agent": self.NAME,
                 "results": results,
@@ -127,6 +145,46 @@ class CalculationAgent:
             lambda vs: (
                 lambda mc, d, c, e: f"EV = ${mc}M + ${d}M - ${c}M = ${mc+d-c:.0f}M; EV/EBITDA = {(mc+d-c)/e:.2f}x"
             )(*[float(v.replace(",", "")) for v in vs]),
+        ),
+        (
+            "Monthly Mortgage Payment",
+            r"mortgage.{0,40}?\$?(\d[\d,]*\.?\d*).{0,20}?(\d+\.?\d*)\s*%?.{0,20}?(\d+)\s*year",
+            lambda vs: (
+                lambda p, annual_r, years: (
+                    f"Monthly payment = ${p * (r := annual_r/100/12) * (1+r)**(n := years*12) / ((1+r)**n - 1):,.2f}"
+                    if annual_r > 0 else f"Monthly payment = ${p / (years * 12):,.2f}"
+                )
+            )(float(vs[0].replace(",", "")), float(vs[1]), int(vs[2])),
+        ),
+        (
+            "Simple Interest",
+            r"simple interest.{0,30}?\$?(\d[\d,]*\.?\d*).{0,20}?(\d+\.?\d*)\s*%?.{0,20}?(\d+)\s*year",
+            lambda vs: (
+                lambda p, r, n: f"Simple Interest = ${p:,.2f} × {r}% × {n} years = ${p * r/100 * n:,.2f}; Total = ${p + p * r/100 * n:,.2f}"
+            )(float(vs[0].replace(",", "")), float(vs[1]), int(vs[2])),
+        ),
+        (
+            "Savings Goal (Future Value)",
+            r"(?:save|savings?|invest).{0,30}?\$?(\d[\d,]*\.?\d*)\s*(?:per month|monthly|a month).{0,30}?(\d+\.?\d*)\s*%?.{0,20}?(\d+)\s*year",
+            lambda vs: (
+                lambda pmt, annual_r, years: (
+                    f"Future value of ${pmt:,.2f}/month at {annual_r}% for {years} years = "
+                    f"${pmt * ((1 + (r := annual_r/100/12))**(n := years*12) - 1) / r:,.2f}"
+                    if annual_r > 0 else f"Future value = ${pmt * years * 12:,.2f}"
+                )
+            )(float(vs[0].replace(",", "")), float(vs[1]), int(vs[2])),
+        ),
+        (
+            "Debt Payoff Time",
+            r"(?:pay off|payoff).{0,30}?\$?(\d[\d,]*\.?\d*).{0,20}?(\d+\.?\d*)\s*%?.{0,20}?\$?(\d[\d,]*\.?\d*)\s*(?:per month|monthly|a month)",
+            lambda vs: (
+                lambda balance, annual_r, monthly_pmt: (
+                    f"Months to pay off ${balance:,.2f} at {annual_r}% with ${monthly_pmt:,.2f}/month = "
+                    f"{-math.log(1 - balance * (r := annual_r/100/12) / monthly_pmt) / math.log(1 + r):.0f} months"
+                    if annual_r > 0 and monthly_pmt > balance * annual_r/100/12 else
+                    f"Months to pay off ${balance:,.2f} with ${monthly_pmt:,.2f}/month = {balance/monthly_pmt:.0f} months (0% interest)"
+                )
+            )(float(vs[0].replace(",", "")), float(vs[1]), float(vs[2].replace(",", ""))),
         ),
     ]
 
@@ -333,22 +391,30 @@ class AgentOrchestrator:
                 parts.append(f"  {c}")
             parts.append("")
 
-        # Primary: model response
         model_text = model_result.get("response", "").strip()
-        if model_text and len(model_text) > 20:
+        kb_results = kb_result.get("results", [])
+        best_kb = kb_results[0] if kb_results else None
+        best_kb_score = best_kb["score"] if best_kb else 0.0
+
+        # Use KB answer directly when:
+        #   1. Model output is absent or too short
+        #   2. KB has a high-confidence match (score > 0.20) — trained answer is authoritative
+        use_kb_direct = (not model_text or len(model_text) < 30) or best_kb_score >= 0.20
+
+        if model_text and len(model_text) >= 30 and not use_kb_direct:
+            parts.append(model_text)
+        elif best_kb:
+            # Prefer the high-scoring KB answer — it's from curated training data
+            parts.append(best_kb["answer"])
+            src = best_kb["source"].replace("_", " ").title()
+            parts.append(f"\n[Source: {src}]")
+        elif model_text and len(model_text) >= 30:
+            # KB had nothing useful but model produced something
             parts.append(model_text)
         else:
-            # Fallback: best knowledge-base match
-            results = kb_result.get("results", [])
-            if results:
-                best = results[0]
-                parts.append(best["answer"])
-                src = best["source"].replace("_", " ").title()
-                parts.append(f"\n[Source: {src}]")
-            else:
-                parts.append(
-                    "I don't have specific data on that yet. "
-                    "Try training on more CSV files or rephrase your question."
-                )
+            parts.append(
+                "I don't have specific data on that yet. "
+                "Try training on more CSV files or rephrase your question."
+            )
 
         return "\n".join(parts)
