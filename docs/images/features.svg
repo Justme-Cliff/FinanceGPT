@@ -1,0 +1,96 @@
+<svg width="1000" height="320" viewBox="0 0 1000 320" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0a0f1e"/>
+      <stop offset="100%" style="stop-color:#0d1b2a"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1000" height="320" fill="url(#bg)" rx="12"/>
+
+  <!-- Section title -->
+  <text x="500" y="40" font-family="'Segoe UI', Arial, sans-serif" font-size="18" font-weight="700"
+    text-anchor="middle" fill="#e2e8f0" letter-spacing="1">CORE CAPABILITIES</text>
+  <line x1="200" y1="52" x2="800" y2="52" stroke="#1e293b" stroke-width="1"/>
+
+  <!-- Card 1: 4 Agents -->
+  <rect x="20" y="68" width="185" height="110" rx="8" fill="#0f172a" stroke="#3b82f6" stroke-width="1" stroke-opacity="0.5"/>
+  <text x="112" y="95" font-family="'Segoe UI', Arial, sans-serif" font-size="28" text-anchor="middle" fill="#3b82f6">⚡</text>
+  <text x="112" y="120" font-family="'Segoe UI', Arial, sans-serif" font-size="13" font-weight="700"
+    text-anchor="middle" fill="#60a5fa">4-Agent Pipeline</text>
+  <text x="112" y="138" font-family="'Segoe UI', Arial, sans-serif" font-size="11"
+    text-anchor="middle" fill="#64748b">Parallel execution —</text>
+  <text x="112" y="154" font-family="'Segoe UI', Arial, sans-serif" font-size="11"
+    text-anchor="middle" fill="#64748b">no sequential bottleneck</text>
+
+  <!-- Card 2: Custom Transformer -->
+  <rect x="215" y="68" width="185" height="110" rx="8" fill="#0f172a" stroke="#8b5cf6" stroke-width="1" stroke-opacity="0.5"/>
+  <text x="307" y="95" font-family="'Segoe UI', Arial, sans-serif" font-size="28" text-anchor="middle" fill="#8b5cf6">🧠</text>
+  <text x="307" y="120" font-family="'Segoe UI', Arial, sans-serif" font-size="13" font-weight="700"
+    text-anchor="middle" fill="#a78bfa">Custom Transformer</text>
+  <text x="307" y="138" font-family="'Segoe UI', Arial, sans-serif" font-size="11"
+    text-anchor="middle" fill="#64748b">RoPE · RMSNorm · SwiGLU</text>
+  <text x="307" y="154" font-family="'Segoe UI', Arial, sans-serif" font-size="11"
+    text-anchor="middle" fill="#64748b">~10M parameters</text>
+
+  <!-- Card 3: Live Math -->
+  <rect x="410" y="68" width="185" height="110" rx="8" fill="#0f172a" stroke="#22c55e" stroke-width="1" stroke-opacity="0.5"/>
+  <text x="502" y="95" font-family="'Segoe UI', Arial, sans-serif" font-size="28" text-anchor="middle" fill="#22c55e">🧮</text>
+  <text x="502" y="120" font-family="'Segoe UI', Arial, sans-serif" font-size="13" font-weight="700"
+    text-anchor="middle" fill="#4ade80">Live Financial Math</text>
+  <text x="502" y="138" font-family="'Segoe UI', Arial, sans-serif" font-size="11"
+    text-anchor="middle" fill="#64748b">Sharpe · ROI · PV</text>
+  <text x="502" y="154" font-family="'Segoe UI', Arial, sans-serif" font-size="11"
+    text-anchor="middle" fill="#64748b">EV/EBITDA · Compound</text>
+
+  <!-- Card 4: Knowledge Base -->
+  <rect x="605" y="68" width="185" height="110" rx="8" fill="#0f172a" stroke="#f97316" stroke-width="1" stroke-opacity="0.5"/>
+  <text x="697" y="95" font-family="'Segoe UI', Arial, sans-serif" font-size="28" text-anchor="middle" fill="#f97316">🔍</text>
+  <text x="697" y="120" font-family="'Segoe UI', Arial, sans-serif" font-size="13" font-weight="700"
+    text-anchor="middle" fill="#fb923c">TF-IDF Knowledge Base</text>
+  <text x="697" y="138" font-family="'Segoe UI', Arial, sans-serif" font-size="11"
+    text-anchor="middle" fill="#64748b">1,200+ curated Q&amp;A pairs</text>
+  <text x="697" y="154" font-family="'Segoe UI', Arial, sans-serif" font-size="11"
+    text-anchor="middle" fill="#64748b">across 31 finance domains</text>
+
+  <!-- Card 5: No APIs -->
+  <rect x="800" y="68" width="185" height="110" rx="8" fill="#0f172a" stroke="#ef4444" stroke-width="1" stroke-opacity="0.5"/>
+  <text x="892" y="95" font-family="'Segoe UI', Arial, sans-serif" font-size="28" text-anchor="middle" fill="#ef4444">🔒</text>
+  <text x="892" y="120" font-family="'Segoe UI', Arial, sans-serif" font-size="13" font-weight="700"
+    text-anchor="middle" fill="#f87171">100% Offline</text>
+  <text x="892" y="138" font-family="'Segoe UI', Arial, sans-serif" font-size="11"
+    text-anchor="middle" fill="#64748b">Zero external APIs</text>
+  <text x="892" y="154" font-family="'Segoe UI', Arial, sans-serif" font-size="11"
+    text-anchor="middle" fill="#64748b">Runs on CPU or GPU</text>
+
+  <!-- Row 2 -->
+  <!-- Card 6: BPE Tokenizer -->
+  <rect x="112" y="192" width="185" height="110" rx="8" fill="#0f172a" stroke="#06b6d4" stroke-width="1" stroke-opacity="0.5"/>
+  <text x="204" y="218" font-family="'Segoe UI', Arial, sans-serif" font-size="28" text-anchor="middle" fill="#06b6d4">📝</text>
+  <text x="204" y="243" font-family="'Segoe UI', Arial, sans-serif" font-size="13" font-weight="700"
+    text-anchor="middle" fill="#22d3ee">Custom BPE Tokenizer</text>
+  <text x="204" y="261" font-family="'Segoe UI', Arial, sans-serif" font-size="11"
+    text-anchor="middle" fill="#64748b">Finance-aware vocabulary</text>
+  <text x="204" y="277" font-family="'Segoe UI', Arial, sans-serif" font-size="11"
+    text-anchor="middle" fill="#64748b">trained from scratch</text>
+
+  <!-- Card 7: Chain of Thought -->
+  <rect x="407" y="192" width="185" height="110" rx="8" fill="#0f172a" stroke="#8b5cf6" stroke-width="1" stroke-opacity="0.5"/>
+  <text x="499" y="218" font-family="'Segoe UI', Arial, sans-serif" font-size="28" text-anchor="middle" fill="#8b5cf6">💡</text>
+  <text x="499" y="243" font-family="'Segoe UI', Arial, sans-serif" font-size="13" font-weight="700"
+    text-anchor="middle" fill="#a78bfa">Chain-of-Thought</text>
+  <text x="499" y="261" font-family="'Segoe UI', Arial, sans-serif" font-size="11"
+    text-anchor="middle" fill="#64748b">Step 1 → Step 2 →</text>
+  <text x="499" y="277" font-family="'Segoe UI', Arial, sans-serif" font-size="11"
+    text-anchor="middle" fill="#64748b">Therefore reasoning</text>
+
+  <!-- Card 8: Persistent Memory -->
+  <rect x="703" y="192" width="185" height="110" rx="8" fill="#0f172a" stroke="#22c55e" stroke-width="1" stroke-opacity="0.5"/>
+  <text x="795" y="218" font-family="'Segoe UI', Arial, sans-serif" font-size="28" text-anchor="middle" fill="#22c55e">💾</text>
+  <text x="795" y="243" font-family="'Segoe UI', Arial, sans-serif" font-size="13" font-weight="700"
+    text-anchor="middle" fill="#4ade80">Persistent Memory</text>
+  <text x="795" y="261" font-family="'Segoe UI', Arial, sans-serif" font-size="11"
+    text-anchor="middle" fill="#64748b">JSON conversation history</text>
+  <text x="795" y="277" font-family="'Segoe UI', Arial, sans-serif" font-size="11"
+    text-anchor="middle" fill="#64748b">survives restarts</text>
+</svg>

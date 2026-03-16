@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/images/banner.png" alt="FinanceGPT Banner" width="100%"/>
+<img src="docs/images/banner.svg" alt="FinanceGPT Banner" width="100%"/>
 
 # FinanceGPT
 
@@ -21,10 +21,8 @@
 ## Demo
 
 <div align="center">
-<img src="docs/images/demo.gif" alt="FinanceGPT Chat Demo" width="85%"/>
+<img src="docs/images/demo.svg" alt="FinanceGPT Chat Demo" width="85%"/>
 </div>
-
-> *Drop a screen recording of your chat session here as a GIF. Tools: [ScreenToGif](https://www.screentogif.com/) (Windows) or [Gifski](https://gif.ski/) (Mac).*
 
 ---
 
@@ -112,9 +110,7 @@ flowchart TD
 
 ## Features
 
-<img src="docs/images/features.png" alt="Feature Overview" width="100%"/>
-
-> *Optional: Replace with a feature overview graphic or screenshot collage.*
+<img src="docs/images/features.svg" alt="Feature Overview" width="100%"/>
 
 - **4-agent parallel reasoning** — Knowledge and Calculation agents run simultaneously with zero sequential bottleneck
 - **Live financial math** — automatically detects and computes Sharpe Ratio, ROI, Compound Interest, Present Value, and EV/EBITDA directly from your query
@@ -231,10 +227,8 @@ Displays model architecture, training stats, best validation loss, and perplexit
 ## Example Conversation
 
 <div align="center">
-<img src="docs/images/example_sharpe.png" alt="Example: Sharpe Ratio Calculation" width="80%"/>
+<img src="docs/images/example_sharpe.svg" alt="Example: Sharpe Ratio Calculation" width="80%"/>
 </div>
-
-> *Screenshot of a Sharpe ratio query. Replace with your own.*
 
 ```
   You ► What is the Sharpe ratio and calculate it for a fund
@@ -263,10 +257,8 @@ Displays model architecture, training stats, best validation loss, and perplexit
 ## Dataset — 31 Finance Domains
 
 <div align="center">
-<img src="docs/images/dataset_overview.png" alt="Dataset Domain Overview" width="80%"/>
+<img src="docs/images/dataset_overview.svg" alt="Dataset Domain Overview" width="80%"/>
 </div>
-
-> *Optional: Replace with a chart of your 31 CSV files and their Q&A pair counts.*
 
 | Category | Domains |
 |---|---|
@@ -345,15 +337,6 @@ Every query passes through four stages, regardless of complexity.
 ## Training Plots
 
 Four training plots are saved automatically to `training_plots/` after each run:
-
-<div align="center">
-<img src="training_plots/01_training_loss.png" alt="Training Loss" width="45%"/>
-<img src="training_plots/02_perplexity.png" alt="Perplexity" width="45%"/>
-</div>
-<div align="center">
-<img src="training_plots/03_train_vs_val.png" alt="Train vs Val Loss" width="45%"/>
-<img src="training_plots/04_learning_rate.png" alt="Learning Rate Schedule" width="45%"/>
-</div>
 
 | Plot | What It Shows |
 |---|---|

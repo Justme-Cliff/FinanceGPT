@@ -1,0 +1,60 @@
+<svg width="820" height="340" viewBox="0 0 820 340" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="winBg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#1e2433"/>
+      <stop offset="100%" style="stop-color:#161b27"/>
+    </linearGradient>
+    <linearGradient id="headerGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#3b82f6" stop-opacity="0.25"/>
+      <stop offset="100%" style="stop-color:#8b5cf6" stop-opacity="0.25"/>
+    </linearGradient>
+    <filter id="shadow">
+      <feDropShadow dx="0" dy="6" stdDeviation="16" flood-color="#000000" flood-opacity="0.4"/>
+    </filter>
+  </defs>
+
+  <!-- Shadow -->
+  <rect x="16" y="16" width="788" height="308" rx="12" fill="#000" opacity="0.35"/>
+
+  <!-- Window frame -->
+  <rect x="10" y="10" width="800" height="308" rx="12" fill="url(#winBg)" filter="url(#shadow)"/>
+
+  <!-- Title bar -->
+  <rect x="10" y="10" width="800" height="38" rx="12" fill="url(#headerGrad)"/>
+  <rect x="10" y="34" width="800" height="14" fill="#1a2035"/>
+
+  <!-- Window controls -->
+  <circle cx="34" cy="29" r="6" fill="#ef4444" opacity="0.8"/>
+  <circle cx="54" cy="29" r="6" fill="#f59e0b" opacity="0.8"/>
+  <circle cx="74" cy="29" r="6" fill="#22c55e" opacity="0.8"/>
+  <text x="410" y="33" font-family="'Segoe UI', monospace" font-size="12" font-weight="500"
+    text-anchor="middle" fill="#64748b">Example — Sharpe Ratio Calculation</text>
+
+  <!-- User query -->
+  <text x="32" y="72" font-family="Consolas, 'Courier New', monospace" font-size="13" fill="#60a5fa" font-weight="700">  You ►</text>
+  <text x="100" y="72" font-family="Consolas, 'Courier New', monospace" font-size="13" fill="#e2e8f0">What is the Sharpe ratio? Calculate it for: 15% return, 3% risk-free,</text>
+  <text x="100" y="90" font-family="Consolas, 'Courier New', monospace" font-size="13" fill="#e2e8f0">10% standard deviation.</text>
+
+  <!-- Divider -->
+  <line x1="32" y1="105" x2="788" y2="105" stroke="#1e293b" stroke-width="1"/>
+
+  <!-- Calculated box -->
+  <rect x="32" y="114" width="756" height="30" rx="5" fill="#052e16" stroke="#166534" stroke-width="1"/>
+  <text x="44" y="133" font-family="Consolas, 'Courier New', monospace" font-size="12.5" fill="#4ade80" font-weight="700">  ✓  Calculated:   Sharpe Ratio = (15% − 3%) ÷ 10%  =  1.2000</text>
+
+  <!-- FinanceGPT label -->
+  <text x="32" y="168" font-family="Consolas, 'Courier New', monospace" font-size="13" fill="#a78bfa" font-weight="700">  FinanceGPT ►</text>
+
+  <!-- Response -->
+  <text x="32" y="190" font-family="Consolas, 'Courier New', monospace" font-size="12" fill="#94a3b8">  The Sharpe ratio measures risk-adjusted return — how much excess return you earn per unit of risk.</text>
+  <text x="32" y="208" font-family="Consolas, 'Courier New', monospace" font-size="12" fill="#cbd5e1">  Step 1: Excess return above the risk-free rate:  15% − 3% = 12%</text>
+  <text x="32" y="226" font-family="Consolas, 'Courier New', monospace" font-size="12" fill="#cbd5e1">  Step 2: Divide by portfolio volatility:           12% ÷ 10% = 1.2</text>
+  <text x="32" y="244" font-family="Consolas, 'Courier New', monospace" font-size="12" fill="#cbd5e1">  Step 3: Interpret — above 1.0 is strong; 1.2 means 1.2% excess return per 1% of risk taken.</text>
+  <text x="32" y="262" font-family="Consolas, 'Courier New', monospace" font-size="12" fill="#94a3b8">  Therefore, this fund demonstrates solid risk-adjusted performance relative to a passive benchmark.</text>
+
+  <!-- Footer -->
+  <line x1="32" y1="278" x2="788" y2="278" stroke="#1e293b" stroke-width="1"/>
+  <text x="32" y="297" font-family="Consolas, 'Courier New', monospace" font-size="11" fill="#334155">  Sources: Quantitative Finance, Finance Fundamentals</text>
+  <text x="560" y="297" font-family="Consolas, 'Courier New', monospace" font-size="11" fill="#334155">Type: calculation</text>
+  <text x="710" y="297" font-family="Consolas, 'Courier New', monospace" font-size="11" fill="#22c55e">1.8s</text>
+</svg>

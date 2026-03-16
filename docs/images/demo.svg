@@ -1,0 +1,83 @@
+<svg width="900" height="420" viewBox="0 0 900 420" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="winBg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#1e2433"/>
+      <stop offset="100%" style="stop-color:#161b27"/>
+    </linearGradient>
+    <linearGradient id="headerGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#3b82f6" stop-opacity="0.3"/>
+      <stop offset="100%" style="stop-color:#8b5cf6" stop-opacity="0.3"/>
+    </linearGradient>
+    <filter id="shadow">
+      <feDropShadow dx="0" dy="8" stdDeviation="20" flood-color="#000000" flood-opacity="0.5"/>
+    </filter>
+  </defs>
+
+  <!-- Window shadow -->
+  <rect x="20" y="20" width="860" height="380" rx="12" fill="#000" opacity="0.4"/>
+
+  <!-- Window frame -->
+  <rect x="15" y="15" width="860" height="380" rx="12" fill="url(#winBg)" filter="url(#shadow)"/>
+
+  <!-- Title bar -->
+  <rect x="15" y="15" width="860" height="40" rx="12" fill="url(#headerGrad)"/>
+  <rect x="15" y="39" width="860" height="16" fill="#1a2035"/>
+
+  <!-- Window controls -->
+  <circle cx="42" cy="35" r="7" fill="#ef4444" opacity="0.8"/>
+  <circle cx="64" cy="35" r="7" fill="#f59e0b" opacity="0.8"/>
+  <circle cx="86" cy="35" r="7" fill="#22c55e" opacity="0.8"/>
+
+  <!-- Title -->
+  <text x="450" y="40" font-family="'Segoe UI', monospace" font-size="13" font-weight="600"
+    text-anchor="middle" fill="#94a3b8">FinanceGPT — Chat Session</text>
+
+  <!-- Startup lines -->
+  <text x="40" y="82" font-family="Consolas, monospace" font-size="12" fill="#475569">  [1/5] Tokenizer …</text>
+  <text x="260" y="82" font-family="Consolas, monospace" font-size="12" fill="#22c55e">✓</text>
+  <text x="275" y="82" font-family="Consolas, monospace" font-size="12" fill="#475569">(12,847 tokens)</text>
+
+  <text x="40" y="100" font-family="Consolas, monospace" font-size="12" fill="#475569">  [2/5] Model …</text>
+  <text x="235" y="100" font-family="Consolas, monospace" font-size="12" fill="#22c55e">✓</text>
+  <text x="250" y="100" font-family="Consolas, monospace" font-size="12" fill="#475569">(10.2M params · device=cuda)</text>
+
+  <text x="40" y="118" font-family="Consolas, monospace" font-size="12" fill="#475569">  [3/5] Knowledge base …</text>
+  <text x="280" y="118" font-family="Consolas, monospace" font-size="12" fill="#22c55e">✓</text>
+  <text x="295" y="118" font-family="Consolas, monospace" font-size="12" fill="#475569">(1,266 Q&amp;A pairs indexed)</text>
+
+  <text x="40" y="136" font-family="Consolas, monospace" font-size="12" fill="#475569">  [4/5] Spawning 4 agents …</text>
+  <text x="295" y="136" font-family="Consolas, monospace" font-size="12" fill="#22c55e">✓</text>
+  <text x="310" y="136" font-family="Consolas, monospace" font-size="12" fill="#3b82f6">  [Knowledge | Calculation | Reasoning | Model]</text>
+
+  <!-- Divider -->
+  <line x1="40" y1="150" x2="860" y2="150" stroke="#1e293b" stroke-width="1"/>
+
+  <!-- User message -->
+  <text x="40" y="175" font-family="Consolas, monospace" font-size="13" fill="#60a5fa" font-weight="700">  You ►</text>
+  <text x="120" y="175" font-family="Consolas, monospace" font-size="13" fill="#e2e8f0">What is the Sharpe ratio? Calculate it for a fund with 15% return,</text>
+  <text x="120" y="193" font-family="Consolas, monospace" font-size="13" fill="#e2e8f0">3% risk-free rate, and 10% standard deviation.</text>
+
+  <!-- Thinking indicator -->
+  <text x="40" y="217" font-family="Consolas, monospace" font-size="12" fill="#475569" font-style="italic">  ⟳ Agents thinking…</text>
+
+  <!-- Divider -->
+  <line x1="40" y1="228" x2="860" y2="228" stroke="#1e293b" stroke-width="1"/>
+
+  <!-- Calculated result -->
+  <rect x="40" y="238" width="820" height="28" rx="4" fill="#0f2d1a"/>
+  <text x="52" y="256" font-family="Consolas, monospace" font-size="12" fill="#22c55e" font-weight="700">  Calculated:  Sharpe Ratio = (15% − 3%) / 10% = 1.2000</text>
+
+  <!-- AI response label -->
+  <text x="40" y="285" font-family="Consolas, monospace" font-size="13" fill="#a78bfa" font-weight="700">  FinanceGPT ►</text>
+
+  <!-- AI response text -->
+  <text x="40" y="305" font-family="Consolas, monospace" font-size="12" fill="#cbd5e1">  The Sharpe ratio measures risk-adjusted return. Step 1: Calculate excess return: 15% − 3% = 12%.</text>
+  <text x="40" y="321" font-family="Consolas, monospace" font-size="12" fill="#cbd5e1">  Step 2: Divide by standard deviation: 12% ÷ 10% = 1.2. Step 3: A ratio above 1.0 is strong —</text>
+  <text x="40" y="337" font-family="Consolas, monospace" font-size="12" fill="#cbd5e1">  1.2 means 1.2% excess return per 1% of volatility. Therefore, this fund has solid performance.</text>
+
+  <!-- Footer metadata -->
+  <line x1="40" y1="355" x2="860" y2="355" stroke="#1e293b" stroke-width="1"/>
+  <text x="40" y="374" font-family="Consolas, monospace" font-size="11" fill="#334155">  Sources: Quantitative Finance, Finance Fundamentals</text>
+  <text x="560" y="374" font-family="Consolas, monospace" font-size="11" fill="#334155">Type: calculation</text>
+  <text x="720" y="374" font-family="Consolas, monospace" font-size="11" fill="#22c55e">1.8s</text>
+</svg>

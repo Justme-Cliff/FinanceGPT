@@ -1,0 +1,109 @@
+<svg width="1000" height="380" viewBox="0 0 1000 380" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0a0f1e"/>
+      <stop offset="100%" style="stop-color:#0d1b2a"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1000" height="380" fill="url(#bg)" rx="12"/>
+
+  <!-- Title -->
+  <text x="500" y="38" font-family="'Segoe UI', Arial, sans-serif" font-size="17" font-weight="700"
+    text-anchor="middle" fill="#e2e8f0" letter-spacing="1">31 FINANCE DOMAINS  ·  1,200+ CURATED Q&amp;A PAIRS</text>
+  <line x1="100" y1="50" x2="900" y2="50" stroke="#1e293b" stroke-width="1"/>
+
+  <!-- Category: Fundamentals -->
+  <rect x="20" y="62" width="185" height="88" rx="7" fill="#0f172a" stroke="#3b82f6" stroke-width="1" stroke-opacity="0.6"/>
+  <text x="112" y="82" font-family="'Segoe UI', Arial, sans-serif" font-size="11" font-weight="700" text-anchor="middle" fill="#60a5fa">FUNDAMENTALS</text>
+  <text x="112" y="99" font-family="'Segoe UI', Arial, sans-serif" font-size="10.5" text-anchor="middle" fill="#64748b">Finance Fundamentals</text>
+  <text x="112" y="114" font-family="'Segoe UI', Arial, sans-serif" font-size="10.5" text-anchor="middle" fill="#64748b">Economics</text>
+  <text x="112" y="129" font-family="'Segoe UI', Arial, sans-serif" font-size="10.5" text-anchor="middle" fill="#64748b">Fundamental Analysis</text>
+  <text x="112" y="144" font-family="'Segoe UI', Arial, sans-serif" font-size="10.5" text-anchor="middle" fill="#64748b">Financial Ratios</text>
+
+  <!-- Category: Markets -->
+  <rect x="215" y="62" width="185" height="88" rx="7" fill="#0f172a" stroke="#f97316" stroke-width="1" stroke-opacity="0.6"/>
+  <text x="307" y="82" font-family="'Segoe UI', Arial, sans-serif" font-size="11" font-weight="700" text-anchor="middle" fill="#fb923c">MARKETS</text>
+  <text x="307" y="99" font-family="'Segoe UI', Arial, sans-serif" font-size="10.5" text-anchor="middle" fill="#64748b">Stock Market</text>
+  <text x="307" y="114" font-family="'Segoe UI', Arial, sans-serif" font-size="10.5" text-anchor="middle" fill="#64748b">Global Markets</text>
+  <text x="307" y="129" font-family="'Segoe UI', Arial, sans-serif" font-size="10.5" text-anchor="middle" fill="#64748b">Technical Analysis</text>
+  <text x="307" y="144" font-family="'Segoe UI', Arial, sans-serif" font-size="10.5" text-anchor="middle" fill="#64748b">Behavioral Finance</text>
+
+  <!-- Category: Fixed Income & Derivatives -->
+  <rect x="410" y="62" width="185" height="88" rx="7" fill="#0f172a" stroke="#22c55e" stroke-width="1" stroke-opacity="0.6"/>
+  <text x="502" y="82" font-family="'Segoe UI', Arial, sans-serif" font-size="11" font-weight="700" text-anchor="middle" fill="#4ade80">FIXED INCOME</text>
+  <text x="502" y="99" font-family="'Segoe UI', Arial, sans-serif" font-size="10.5" text-anchor="middle" fill="#64748b">Bonds &amp; Fixed Income</text>
+  <text x="502" y="114" font-family="'Segoe UI', Arial, sans-serif" font-size="10.5" text-anchor="middle" fill="#64748b">Portfolio Theory</text>
+  <text x="502" y="129" font-family="'Segoe UI', Arial, sans-serif" font-size="10.5" text-anchor="middle" fill="#64748b">Options Trading</text>
+  <text x="502" y="144" font-family="'Segoe UI', Arial, sans-serif" font-size="10.5" text-anchor="middle" fill="#64748b">Quantitative Finance</text>
+
+  <!-- Category: Strategies -->
+  <rect x="605" y="62" width="185" height="88" rx="7" fill="#0f172a" stroke="#8b5cf6" stroke-width="1" stroke-opacity="0.6"/>
+  <text x="697" y="82" font-family="'Segoe UI', Arial, sans-serif" font-size="11" font-weight="700" text-anchor="middle" fill="#a78bfa">STRATEGIES</text>
+  <text x="697" y="99" font-family="'Segoe UI', Arial, sans-serif" font-size="10.5" text-anchor="middle" fill="#64748b">Investment Strategies</text>
+  <text x="697" y="114" font-family="'Segoe UI', Arial, sans-serif" font-size="10.5" text-anchor="middle" fill="#64748b">Hedge Funds</text>
+  <text x="697" y="129" font-family="'Segoe UI', Arial, sans-serif" font-size="10.5" text-anchor="middle" fill="#64748b">Risk Management</text>
+  <text x="697" y="144" font-family="'Segoe UI', Arial, sans-serif" font-size="10.5" text-anchor="middle" fill="#64748b">Private Equity</text>
+
+  <!-- Category: Corporate -->
+  <rect x="800" y="62" width="185" height="88" rx="7" fill="#0f172a" stroke="#ef4444" stroke-width="1" stroke-opacity="0.6"/>
+  <text x="892" y="82" font-family="'Segoe UI', Arial, sans-serif" font-size="11" font-weight="700" text-anchor="middle" fill="#f87171">CORPORATE</text>
+  <text x="892" y="99" font-family="'Segoe UI', Arial, sans-serif" font-size="10.5" text-anchor="middle" fill="#64748b">Corporate Finance</text>
+  <text x="892" y="114" font-family="'Segoe UI', Arial, sans-serif" font-size="10.5" text-anchor="middle" fill="#64748b">Financial Modeling</text>
+  <text x="892" y="129" font-family="'Segoe UI', Arial, sans-serif" font-size="10.5" text-anchor="middle" fill="#64748b">Financial Crises</text>
+  <text x="892" y="144" font-family="'Segoe UI', Arial, sans-serif" font-size="10.5" text-anchor="middle" fill="#64748b">Startup Finance</text>
+
+  <!-- Row 2 -->
+  <!-- Personal Finance -->
+  <rect x="20" y="162" width="185" height="88" rx="7" fill="#0f172a" stroke="#06b6d4" stroke-width="1" stroke-opacity="0.6"/>
+  <text x="112" y="182" font-family="'Segoe UI', Arial, sans-serif" font-size="11" font-weight="700" text-anchor="middle" fill="#22d3ee">PERSONAL</text>
+  <text x="112" y="199" font-family="'Segoe UI', Arial, sans-serif" font-size="10.5" text-anchor="middle" fill="#64748b">Personal Finance</text>
+  <text x="112" y="214" font-family="'Segoe UI', Arial, sans-serif" font-size="10.5" text-anchor="middle" fill="#64748b">Retirement Planning</text>
+  <text x="112" y="229" font-family="'Segoe UI', Arial, sans-serif" font-size="10.5" text-anchor="middle" fill="#64748b">Tax Strategies</text>
+  <text x="112" y="244" font-family="'Segoe UI', Arial, sans-serif" font-size="10.5" text-anchor="middle" fill="#64748b">Wealth Management</text>
+
+  <!-- Alternative -->
+  <rect x="215" y="162" width="185" height="88" rx="7" fill="#0f172a" stroke="#f59e0b" stroke-width="1" stroke-opacity="0.6"/>
+  <text x="307" y="182" font-family="'Segoe UI', Arial, sans-serif" font-size="11" font-weight="700" text-anchor="middle" fill="#fbbf24">ALTERNATIVE</text>
+  <text x="307" y="199" font-family="'Segoe UI', Arial, sans-serif" font-size="10.5" text-anchor="middle" fill="#64748b">Real Estate</text>
+  <text x="307" y="214" font-family="'Segoe UI', Arial, sans-serif" font-size="10.5" text-anchor="middle" fill="#64748b">Commodities Trading</text>
+  <text x="307" y="229" font-family="'Segoe UI', Arial, sans-serif" font-size="10.5" text-anchor="middle" fill="#64748b">Forex Trading</text>
+  <text x="307" y="244" font-family="'Segoe UI', Arial, sans-serif" font-size="10.5" text-anchor="middle" fill="#64748b">Cryptocurrency</text>
+
+  <!-- Modern Finance -->
+  <rect x="410" y="162" width="185" height="88" rx="7" fill="#0f172a" stroke="#22c55e" stroke-width="1" stroke-opacity="0.6"/>
+  <text x="502" y="182" font-family="'Segoe UI', Arial, sans-serif" font-size="11" font-weight="700" text-anchor="middle" fill="#4ade80">MODERN FINANCE</text>
+  <text x="502" y="199" font-family="'Segoe UI', Arial, sans-serif" font-size="10.5" text-anchor="middle" fill="#64748b">Fintech &amp; Blockchain</text>
+  <text x="502" y="214" font-family="'Segoe UI', Arial, sans-serif" font-size="10.5" text-anchor="middle" fill="#64748b">ESG &amp; Sustainable</text>
+  <text x="502" y="229" font-family="'Segoe UI', Arial, sans-serif" font-size="10.5" text-anchor="middle" fill="#64748b">Banking &amp; Finance</text>
+
+  <!-- Stats bar -->
+  <rect x="20" y="265" width="965" height="90" rx="8" fill="#0d1117" stroke="#1e293b" stroke-width="1"/>
+
+  <text x="500" y="291" font-family="'Segoe UI', Arial, sans-serif" font-size="13" font-weight="700"
+    text-anchor="middle" fill="#94a3b8" letter-spacing="2">TRAINING DATA STATS</text>
+
+  <!-- Stat 1 -->
+  <text x="167" y="340" font-family="'Segoe UI', Arial, sans-serif" font-size="28" font-weight="900"
+    text-anchor="middle" fill="#3b82f6">31</text>
+  <text x="167" y="356" font-family="'Segoe UI', Arial, sans-serif" font-size="11"
+    text-anchor="middle" fill="#475569">Finance Domains</text>
+
+  <!-- Divider -->
+  <line x1="333" y1="280" x2="333" y2="348" stroke="#1e293b" stroke-width="1"/>
+
+  <!-- Stat 2 -->
+  <text x="500" y="340" font-family="'Segoe UI', Arial, sans-serif" font-size="28" font-weight="900"
+    text-anchor="middle" fill="#8b5cf6">1,200+</text>
+  <text x="500" y="356" font-family="'Segoe UI', Arial, sans-serif" font-size="11"
+    text-anchor="middle" fill="#475569">Curated Q&amp;A Pairs</text>
+
+  <!-- Divider -->
+  <line x1="667" y1="280" x2="667" y2="348" stroke="#1e293b" stroke-width="1"/>
+
+  <!-- Stat 3 -->
+  <text x="833" y="340" font-family="'Segoe UI', Arial, sans-serif" font-size="28" font-weight="900"
+    text-anchor="middle" fill="#22c55e">CoT</text>
+  <text x="833" y="356" font-family="'Segoe UI', Arial, sans-serif" font-size="11"
+    text-anchor="middle" fill="#475569">Chain-of-Thought Format</text>
+</svg>
