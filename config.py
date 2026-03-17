@@ -3,27 +3,27 @@
 # ── Model ──────────────────────────────────────────────────────────────
 MODEL_CONFIG = {
     "vocab_size": None,       # filled at runtime from tokenizer
-    "d_model": 512,           # 256→512: 4× more representational capacity
+    "d_model": 512,           # 4× more capacity than original
     "n_heads": 8,             # attention heads (d_k = 64)
-    "n_layers": 6,            # 4→6: deeper reasoning, +50% depth
+    "n_layers": 6,            # deep reasoning
     "d_ff": 1536,             # 3× d_model
-    "max_seq_len": 512,       # 256→512: longer context = richer answers
+    "max_seq_len": 256,       # 512→256: attention is O(n²) — halving this ~3× faster
     "dropout": 0.10,
 }
 
 # ── Training ───────────────────────────────────────────────────────────
 TRAIN_CONFIG = {
-    "epochs": 20,
-    "batch_size": 16,         # smaller batch for larger model memory footprint
-    "grad_accum": 4,          # effective batch = 64 (same as before)
-    "lr": 1e-4,               # lower LR for larger model — more stable
+    "epochs": 12,             # early stopping handles the rest
+    "batch_size": 32,         # 16→32: 2× fewer optimizer steps per epoch
+    "grad_accum": 2,          # effective batch = 64
+    "lr": 1.5e-4,             # slightly higher for faster convergence
     "min_lr": 5e-6,
-    "warmup_steps": 400,      # longer warmup for larger model
+    "warmup_steps": 150,
     "grad_clip": 1.0,
     "label_smoothing": 0.05,
     "val_split": 0.10,
-    "block_size": 512,        # matches max_seq_len
-    "patience": 8,            # early-stopping epochs without val improvement
+    "block_size": 256,        # matches max_seq_len
+    "patience": 5,            # stop when converged
     "mixed_precision": True,  # use torch.autocast when CUDA available
 }
 

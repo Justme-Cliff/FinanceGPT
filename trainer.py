@@ -210,7 +210,7 @@ def train(csv_file: str = None):
     pin = device.type == "cuda"
     # Use persistent_workers to avoid re-spawning worker processes each epoch
     # (only with num_workers > 0; on CPU we keep 0 to avoid multiprocessing overhead)
-    n_workers = min(2, os.cpu_count() or 1) if device.type == "cuda" else 0
+    n_workers = min(4, os.cpu_count() or 1) if device.type == "cuda" else 0
     loader_kw = dict(
         pin_memory=pin,
         num_workers=n_workers,
@@ -249,14 +249,13 @@ def train(csv_file: str = None):
     model = model.to(device)
     print(f"  Parameters : {model.num_params():,}")
 
-    # torch.compile requires a C++ compiler (cl.exe on Windows) for Inductor.
-    # Skip on Windows to avoid RuntimeError when MSVC is not in PATH.
-    if sys.platform != "win32":
-        try:
-            model = torch.compile(model)
-            print("  torch.compile : enabled")
-        except Exception:
-            pass  # PyTorch < 2.0 or unsupported platform
+    # torch.compile: eager backend on Windows (no MSVC needed), inductor elsewhere
+    try:
+        backend = "eager" if sys.platform == "win32" else "inductor"
+        model = torch.compile(model, backend=backend)
+        print(f"  torch.compile : enabled ({backend})")
+    except Exception:
+        pass  # PyTorch < 2.0 or unsupported platform
 
     optimizer    = torch.optim.AdamW(
         model.parameters(), lr=TRAIN_CONFIG["lr"],
