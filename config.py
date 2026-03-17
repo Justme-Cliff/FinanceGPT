@@ -3,37 +3,37 @@
 # ── Model ──────────────────────────────────────────────────────────────
 MODEL_CONFIG = {
     "vocab_size": None,       # filled at runtime from tokenizer
-    "d_model": 256,           # reduced 384→256 for CPU speed (~3× fewer MLP FLOPs)
-    "n_heads": 8,             # attention heads (d_k = 32)
-    "n_layers": 4,            # reduced 8→4 for CPU speed
-    "d_ff": 768,              # 3× d_model
-    "max_seq_len": 256,       # context window
+    "d_model": 512,           # 256→512: 4× more representational capacity
+    "n_heads": 8,             # attention heads (d_k = 64)
+    "n_layers": 6,            # 4→6: deeper reasoning, +50% depth
+    "d_ff": 1536,             # 3× d_model
+    "max_seq_len": 512,       # 256→512: longer context = richer answers
     "dropout": 0.10,
 }
 
 # ── Training ───────────────────────────────────────────────────────────
 TRAIN_CONFIG = {
-    "epochs": 25,
-    "batch_size": 32,
-    "grad_accum": 2,          # effective batch = 64
-    "lr": 2e-4,
+    "epochs": 20,
+    "batch_size": 16,         # smaller batch for larger model memory footprint
+    "grad_accum": 4,          # effective batch = 64 (same as before)
+    "lr": 1e-4,               # lower LR for larger model — more stable
     "min_lr": 5e-6,
-    "warmup_steps": 200,
+    "warmup_steps": 400,      # longer warmup for larger model
     "grad_clip": 1.0,
     "label_smoothing": 0.05,
     "val_split": 0.10,
-    "block_size": 256,        # matches max_seq_len
+    "block_size": 512,        # matches max_seq_len
     "patience": 8,            # early-stopping epochs without val improvement
     "mixed_precision": True,  # use torch.autocast when CUDA available
 }
 
 # ── Generation ─────────────────────────────────────────────────────────
 GEN_CONFIG = {
-    "temperature": 0.82,
+    "temperature": 0.80,
     "top_k": 50,
     "top_p": 0.92,            # nucleus sampling
     "repetition_penalty": 1.3,
-    "max_new_tokens": 220,
+    "max_new_tokens": 280,    # more tokens for richer answers
 }
 
 # ── Paths ──────────────────────────────────────────────────────────────

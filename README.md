@@ -11,7 +11,7 @@
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0%2B-EE4C2C?style=for-the-badge&logo=pytorch&logoColor=white)](https://pytorch.org)
 [![License](https://img.shields.io/badge/License-MIT-22C55E?style=for-the-badge)](LICENSE)
 [![Topics](https://img.shields.io/badge/Finance_Domains-32-F97316?style=for-the-badge)](data/)
-[![Parameters](https://img.shields.io/badge/Parameters-~6M-8B5CF6?style=for-the-badge)](model.py)
+[![Parameters](https://img.shields.io/badge/Parameters-~25M-8B5CF6?style=for-the-badge)](model.py)
 [![Status](https://img.shields.io/badge/Status-Active-22C55E?style=for-the-badge)]()
 
 </div>
@@ -34,7 +34,7 @@ The system is designed around a key insight: **retrieval + reasoning + generatio
 
 | Component | Technology |
 |---|---|
-| Language Model | Decoder-only transformer — 4 layers · d_model=256 · 8 heads (RoPE · RMSNorm · SwiGLU) |
+| Language Model | Decoder-only transformer — 6 layers · d_model=512 · 8 heads · ~25M params (RoPE · RMSNorm · SwiGLU) |
 | Tokenizer | Custom BPE trained from scratch on finance text |
 | Knowledge Retrieval | TF-IDF cosine similarity over 1,200+ Q&A pairs |
 | Reasoning | Rule-based CoT scaffold with 8-type question classifier |
@@ -87,16 +87,16 @@ flowchart TD
 flowchart TD
     A["Input Tokens"] --> B
 
-    B["Embedding Layer\nd_model = 256"]
+    B["Embedding Layer\nd_model = 512"]
     B --> C
 
-    subgraph Block ["Transformer Block ×4"]
+    subgraph Block ["Transformer Block ×6"]
         direction TB
         C1["RMSNorm"] --> C2
         C2["Multi-Head Attention\n8 heads · Causal mask\nRoPE positional encoding"] --> C3
         C3["Residual Add"] --> C4
         C4["RMSNorm"] --> C5
-        C5["SwiGLU MLP\nd_ff = 768\nsilu(gate·x) × up(x) → down"] --> C6
+        C5["SwiGLU MLP\nd_ff = 1536\nsilu(gate·x) × up(x) → down"] --> C6
         C6["Residual Add"]
     end
 
@@ -192,12 +192,12 @@ On first run, `/train` will:
 3. Save model weights and tokenizer to `checkpoints/`
 4. Export four training plots to `training_plots/`
 
-**Estimated training time:**
+**Estimated training time (~25M param model):**
 
 | Hardware | Time |
 |---|---|
-| CPU (modern) | 30–90 minutes |
-| GPU (CUDA) | 5–15 minutes |
+| CPU (modern) | 4–8 hours |
+| GPU (CUDA) | 15–25 hours |
 
 ### Chatting
 
@@ -415,21 +415,21 @@ All hyperparameters live in `config.py` — the single source of truth.
 
 ```python
 MODEL_CONFIG = {
-    "d_model": 256,       # Embedding dimension
-    "n_heads": 8,         # Attention heads  (d_k = 32)
-    "n_layers": 4,        # Transformer blocks
-    "d_ff": 768,          # FFN inner dim (3× d_model)
-    "max_seq_len": 256,   # Context window (tokens)
+    "d_model": 512,       # Embedding dimension (~25M params)
+    "n_heads": 8,         # Attention heads  (d_k = 64)
+    "n_layers": 6,        # Transformer blocks
+    "d_ff": 1536,         # FFN inner dim (3× d_model)
+    "max_seq_len": 512,   # Context window (tokens)
     "dropout": 0.10,
 }
 
 TRAIN_CONFIG = {
-    "epochs": 25,
-    "batch_size": 32,
-    "grad_accum": 2,      # Effective batch = 64
-    "lr": 2e-4,
+    "epochs": 20,
+    "batch_size": 16,     # Smaller batch for larger model
+    "grad_accum": 4,      # Effective batch = 64
+    "lr": 1e-4,           # Lower LR for stable convergence
     "min_lr": 5e-6,
-    "warmup_steps": 200,
+    "warmup_steps": 400,
     "grad_clip": 1.0,
     "label_smoothing": 0.05,
     "patience": 8,        # Early stopping patience
@@ -437,11 +437,11 @@ TRAIN_CONFIG = {
 }
 
 GEN_CONFIG = {
-    "temperature": 0.82,        # Higher = more creative (0.5–1.0)
+    "temperature": 0.80,        # Higher = more creative (0.5–1.0)
     "top_k": 50,
     "top_p": 0.92,
     "repetition_penalty": 1.3,  # Higher = less repetition
-    "max_new_tokens": 220,
+    "max_new_tokens": 280,
 }
 ```
 

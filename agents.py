@@ -443,23 +443,14 @@ class AgentOrchestrator:
             )
             return "\n".join(parts)
 
-        # If web search fired, prioritize web results over static KB answers —
-        # the user asked for live/current info and the KB answer is likely stale/generic.
+        # If web search fired, prioritize web results — KB answer is likely stale/generic
         if web_used:
-            web_results = web_result["results"]
-            parts.append("Here's what I found online:\n")
-            for r in web_results[:3]:
-                title   = r.get("title", "").strip()
-                snippet = r.get("snippet", "").strip()
-                url     = r.get("url", "").strip()
-                if snippet:
-                    parts.append(f"• {title}")
-                    parts.append(f"  {snippet}")
-                    if url:
-                        parts.append(f"  {url}")
-                    parts.append("")
-            parts.append("[Source: Web Search]")
-            return "\n".join(parts)
+            from web_search import format_web_answer
+            answer = format_web_answer(web_result["results"])
+            if answer:
+                parts.append(answer)
+                return "\n".join(parts)
+            # Web returned nothing useful — fall through to KB/model
 
         # Use KB answer directly when:
         #   1. Model output is absent or too short
@@ -475,9 +466,20 @@ class AgentOrchestrator:
         elif model_text and len(model_text) >= 30:
             parts.append(model_text)
         else:
+            # Last resort — try web search before giving up
+            try:
+                from web_search import web_search, format_web_answer
+                raw = web_search(query, max_results=4)
+                if raw:
+                    answer = format_web_answer(raw)
+                    if answer:
+                        parts.append(answer)
+                        return "\n".join(parts)
+            except Exception:
+                pass
             parts.append(
-                "I don't have specific data on that in my training data. "
-                "Try running /fetch to pull live market data, or add a CSV for this topic and retrain."
+                "I don't have information on that yet. "
+                "Try /fetch to pull live data, or rephrase your question."
             )
 
         return "\n".join(parts)

@@ -55,10 +55,345 @@ _REPHRASE_RULES = [
     (r"\bsort of\b", ""),
 ]
 
-_CACHE_VERSION = 3   # bump to invalidate old caches after format changes
+_CACHE_VERSION = 5   # bump to invalidate old caches after format changes
 
 
 # ── Tokeniser ───────────────────────────────────────────────────────────
+
+# Finance synonym map — built from actual training CSV vocabulary
+# Each key expands into related terms so different phrasings hit the same docs
+_SYNONYMS: dict[str, list[str]] = {
+    # ── Stocks / Equities ──────────────────────────────────────────────
+    "stocks":           ["equities", "shares", "equity", "stock"],
+    "equities":         ["stocks", "shares", "equity"],
+    "shares":           ["stocks", "equities", "stock"],
+    "equity":           ["stock", "shares", "equities"],
+    "stock":            ["equities", "shares"],
+    "bluechip":         ["large", "cap", "dividend", "stable"],
+    "penny":            ["small", "cap", "speculative"],
+    "growth":           ["appreciation", "momentum", "expansion"],
+    "value":            ["undervalued", "cheap", "discount", "fundamental"],
+
+    # ── Market indices ─────────────────────────────────────────────────
+    "sp500":            ["index", "benchmark", "large", "cap", "market"],
+    "nasdaq":           ["tech", "composite", "technology", "index"],
+    "dow":              ["djia", "jones", "industrial", "index"],
+    "djia":             ["dow", "jones", "industrial"],
+    "index":            ["benchmark", "etf", "fund", "market"],
+    "indices":          ["index", "benchmark", "market"],
+    "russell":          ["small", "cap", "index"],
+    "ftse":             ["uk", "british", "index", "market"],
+    "nikkei":           ["japan", "japanese", "index", "market"],
+
+    # ── Bonds / Fixed income ───────────────────────────────────────────
+    "bonds":            ["fixed", "income", "debt", "treasuries", "securities"],
+    "bond":             ["treasury", "note", "fixed", "income", "coupon"],
+    "treasuries":       ["bonds", "government", "debt", "tbills"],
+    "treasury":         ["government", "bonds", "debt", "risk", "free"],
+    "tbills":           ["treasury", "short", "term", "government"],
+    "munis":            ["municipal", "bonds", "tax", "exempt"],
+    "municipal":        ["munis", "bonds", "tax", "exempt"],
+    "junk":             ["high", "yield", "bonds", "speculative", "credit"],
+    "highyield":        ["junk", "bonds", "credit", "risk"],
+    "coupon":           ["interest", "payment", "bond", "yield"],
+    "ytm":              ["yield", "maturity", "bond", "return"],
+    "duration":         ["interest", "rate", "risk", "bond", "sensitivity"],
+    "convexity":        ["bond", "duration", "interest", "rate"],
+    "yield":            ["return", "dividend", "interest", "coupon", "rate"],
+    "inverted":         ["yield", "curve", "recession", "warning"],
+    "laddering":        ["bonds", "maturity", "diversification", "fixed", "income"],
+    "tips":             ["inflation", "protected", "treasury", "bonds"],
+    "mbs":              ["mortgage", "backed", "securities", "bonds"],
+
+    # ── Returns / Performance ──────────────────────────────────────────
+    "return":           ["roi", "yield", "profit", "gain", "performance"],
+    "roi":              ["return", "profit", "gain", "investment"],
+    "roic":             ["return", "invested", "capital", "profitability"],
+    "roe":              ["return", "equity", "profitability"],
+    "roa":              ["return", "assets", "profitability"],
+    "alpha":            ["outperformance", "excess", "return", "skill"],
+    "beta":             ["market", "risk", "volatility", "correlation", "systematic"],
+    "sharpe":           ["risk", "adjusted", "return", "ratio"],
+    "sortino":          ["downside", "risk", "return", "ratio"],
+    "calmar":           ["drawdown", "return", "ratio", "risk"],
+    "cagr":             ["compound", "annual", "growth", "rate", "return"],
+    "performance":      ["return", "gain", "profit", "results"],
+    "drawdown":         ["loss", "decline", "peak", "trough", "risk"],
+
+    # ── Valuation ratios ───────────────────────────────────────────────
+    "pe":               ["price", "earnings", "valuation", "multiple", "ratio"],
+    "peg":              ["pe", "growth", "valuation", "ratio"],
+    "pb":               ["price", "book", "valuation", "ratio"],
+    "ps":               ["price", "sales", "valuation", "ratio"],
+    "ebitda":           ["earnings", "operating", "income", "profit", "margin"],
+    "ev":               ["enterprise", "value", "valuation"],
+    "wacc":             ["weighted", "average", "cost", "capital", "discount"],
+    "dcf":              ["discounted", "cash", "flow", "valuation", "intrinsic"],
+    "npv":              ["net", "present", "value", "discounted", "cash"],
+    "irr":              ["internal", "rate", "return", "investment"],
+    "eps":              ["earnings", "per", "share", "profit"],
+    "fcf":              ["free", "cash", "flow", "earnings"],
+    "capex":            ["capital", "expenditure", "investment", "spending"],
+    "intrinsic":        ["value", "dcf", "fundamental", "worth"],
+    "valuation":        ["price", "worth", "multiple", "pe", "dcf"],
+    "multiple":         ["valuation", "pe", "ebitda", "ratio"],
+
+    # ── Financial ratios ───────────────────────────────────────────────
+    "current":          ["ratio", "liquidity", "assets", "liabilities"],
+    "quick":            ["ratio", "liquidity", "acid", "test"],
+    "debt":             ["leverage", "liability", "borrowing", "credit"],
+    "leverage":         ["debt", "margin", "borrowing", "risk"],
+    "liquidity":        ["cash", "quick", "current", "ratio", "assets"],
+    "solvency":         ["debt", "leverage", "long", "term", "viability"],
+    "profitability":    ["margin", "roe", "roa", "return", "profit"],
+    "margin":           ["profit", "gross", "operating", "net", "profitability"],
+    "turnover":         ["efficiency", "asset", "inventory", "ratio"],
+    "efficiency":       ["turnover", "ratio", "operational", "productivity"],
+    "altman":           ["zscore", "bankruptcy", "distress", "risk"],
+
+    # ── Crypto / Blockchain ────────────────────────────────────────────
+    "bitcoin":          ["btc", "crypto", "cryptocurrency", "digital"],
+    "btc":              ["bitcoin", "crypto", "digital", "currency"],
+    "ethereum":         ["eth", "crypto", "smart", "contracts", "blockchain"],
+    "eth":              ["ethereum", "crypto", "blockchain"],
+    "crypto":           ["cryptocurrency", "bitcoin", "blockchain", "digital", "assets"],
+    "cryptocurrency":   ["crypto", "bitcoin", "ethereum", "digital", "assets"],
+    "blockchain":       ["distributed", "ledger", "crypto", "decentralized"],
+    "defi":             ["decentralized", "finance", "crypto", "protocol"],
+    "nft":              ["non", "fungible", "token", "digital", "art"],
+    "stablecoin":       ["usdc", "usdt", "peg", "dollar", "crypto"],
+    "staking":          ["yield", "proof", "stake", "crypto", "rewards"],
+    "altcoin":          ["crypto", "alternative", "coin", "token"],
+    "halving":          ["bitcoin", "supply", "mining", "reward"],
+    "pow":              ["proof", "work", "mining", "bitcoin"],
+    "pos":              ["proof", "stake", "ethereum", "validator"],
+    "wallet":           ["crypto", "keys", "storage", "cold", "hot"],
+    "dex":              ["decentralized", "exchange", "defi", "swap"],
+    "dao":              ["decentralized", "autonomous", "organization", "governance"],
+
+    # ── Options ────────────────────────────────────────────────────────
+    "options":          ["call", "put", "derivative", "contract", "premium"],
+    "call":             ["option", "buy", "right", "bullish", "upside"],
+    "put":              ["option", "sell", "right", "bearish", "downside"],
+    "strike":           ["price", "exercise", "option", "contract"],
+    "premium":          ["option", "cost", "price", "insurance"],
+    "delta":            ["options", "greek", "sensitivity", "hedge"],
+    "gamma":            ["options", "greek", "delta", "change"],
+    "theta":            ["time", "decay", "option", "greek", "erosion"],
+    "vega":             ["volatility", "option", "greek", "sensitivity"],
+    "iv":               ["implied", "volatility", "options", "vega"],
+    "itm":              ["in", "money", "option", "intrinsic"],
+    "otm":              ["out", "money", "option", "speculative"],
+    "covered":          ["call", "option", "income", "strategy"],
+    "straddle":         ["options", "volatility", "strategy", "earnings"],
+    "condor":           ["iron", "options", "strategy", "range"],
+    "leaps":            ["long", "term", "options", "equity", "anticipation"],
+    "blackscholes":     ["options", "pricing", "model", "formula"],
+
+    # ── Technical analysis ─────────────────────────────────────────────
+    "rsi":              ["relative", "strength", "index", "momentum", "overbought"],
+    "macd":             ["moving", "average", "convergence", "divergence", "momentum"],
+    "bollinger":        ["bands", "volatility", "standard", "deviation"],
+    "vwap":             ["volume", "weighted", "average", "price", "institutional"],
+    "ema":              ["exponential", "moving", "average", "trend"],
+    "sma":              ["simple", "moving", "average", "trend"],
+    "golden":           ["cross", "moving", "average", "bullish"],
+    "death":            ["cross", "moving", "average", "bearish"],
+    "support":          ["level", "price", "floor", "technical"],
+    "resistance":       ["level", "price", "ceiling", "technical"],
+    "breakout":         ["support", "resistance", "price", "momentum"],
+    "candlestick":      ["chart", "technical", "pattern", "ohlc"],
+    "fibonacci":        ["retracement", "technical", "levels", "support"],
+    "momentum":         ["rsi", "macd", "trend", "velocity"],
+    "overbought":       ["rsi", "high", "reversal", "technical"],
+    "oversold":         ["rsi", "low", "reversal", "technical", "cheap"],
+
+    # ── Risk ───────────────────────────────────────────────────────────
+    "risk":             ["volatility", "uncertainty", "loss", "exposure"],
+    "volatility":       ["risk", "vix", "standard", "deviation", "fluctuation"],
+    "vix":              ["volatility", "fear", "index", "options"],
+    "var":              ["value", "risk", "loss", "quantile"],
+    "cvar":             ["conditional", "var", "expected", "shortfall", "tail"],
+    "hedge":            ["protection", "risk", "management", "offset"],
+    "hedging":          ["hedge", "risk", "management", "protection"],
+    "systematic":       ["market", "risk", "beta", "undiversifiable"],
+    "unsystematic":     ["specific", "risk", "diversifiable", "company"],
+    "correlation":      ["diversification", "relationship", "covariance", "beta"],
+    "diversification":  ["portfolio", "correlation", "risk", "spread", "allocation"],
+    "rebalancing":      ["portfolio", "allocation", "rebalance", "adjustment"],
+    "allocation":       ["portfolio", "asset", "diversification", "weights"],
+
+    # ── Economy / Fed / Macro ──────────────────────────────────────────
+    "fed":              ["federal", "reserve", "fomc", "central", "bank", "monetary"],
+    "federal":          ["fed", "reserve", "fomc", "central", "bank"],
+    "fomc":             ["fed", "federal", "reserve", "rate", "decision"],
+    "reserve":          ["fed", "federal", "central", "bank"],
+    "cpi":              ["inflation", "consumer", "price", "index", "cost"],
+    "pce":              ["inflation", "personal", "consumption", "fed", "preferred"],
+    "inflation":        ["cpi", "pce", "prices", "purchasing", "power", "rate"],
+    "deflation":        ["prices", "falling", "economy", "contraction"],
+    "stagflation":      ["inflation", "recession", "stagnation", "unemployment"],
+    "gdp":              ["growth", "output", "economy", "economic", "production"],
+    "gnp":              ["gross", "national", "product", "gdp", "economy"],
+    "recession":        ["downturn", "contraction", "gdp", "negative", "growth"],
+    "depression":       ["severe", "recession", "economic", "crisis", "1929"],
+    "unemployment":     ["jobs", "labor", "market", "rate", "employment"],
+    "pmi":              ["purchasing", "managers", "index", "manufacturing", "economic"],
+    "qe":               ["quantitative", "easing", "fed", "money", "supply", "bonds"],
+    "qt":               ["quantitative", "tightening", "fed", "contraction", "balance"],
+    "sofr":             ["libor", "overnight", "rate", "benchmark", "loans"],
+    "libor":            ["sofr", "benchmark", "rate", "interbank", "lending"],
+    "monetary":         ["policy", "fed", "interest", "rate", "money", "supply"],
+    "fiscal":           ["policy", "government", "spending", "tax", "deficit"],
+    "stimulus":         ["fiscal", "government", "spending", "economy", "recovery"],
+    "austerity":        ["fiscal", "cuts", "government", "spending", "debt"],
+    "yield":            ["return", "interest", "curve", "bond", "rate"],
+    "interest":         ["rate", "yield", "fed", "borrowing", "cost"],
+    "rate":             ["interest", "yield", "fed", "borrowing", "inflation"],
+    "rates":            ["interest", "yield", "borrowing", "fed", "policy"],
+    "hawkish":          ["interest", "rate", "hike", "fed", "inflation"],
+    "dovish":           ["interest", "rate", "cut", "fed", "easing"],
+    "pivot":            ["fed", "rate", "change", "policy", "shift"],
+    "tariff":           ["trade", "tax", "import", "protectionism"],
+    "trade":            ["deficit", "surplus", "tariff", "export", "import"],
+    "globalization":    ["trade", "international", "markets", "exports"],
+
+    # ── Personal finance / Savings ─────────────────────────────────────
+    "budget":           ["spending", "income", "expenses", "financial", "plan"],
+    "saving":           ["savings", "emergency", "fund", "investment"],
+    "savings":          ["saving", "account", "emergency", "fund", "interest"],
+    "debt":             ["loan", "credit", "liability", "borrowing", "payoff"],
+    "loan":             ["debt", "credit", "borrowing", "interest", "mortgage"],
+    "credit":           ["score", "debt", "loan", "rating", "borrowing"],
+    "mortgage":         ["home", "loan", "real", "estate", "interest", "rate"],
+    "compound":         ["interest", "growth", "reinvest", "exponential"],
+    "simple":           ["interest", "calculation", "linear"],
+    "networth":         ["wealth", "assets", "liabilities", "balance"],
+    "emergency":        ["fund", "savings", "cash", "reserve", "liquid"],
+    "insurance":        ["protection", "risk", "coverage", "premium", "policy"],
+    "annuity":          ["retirement", "income", "fixed", "payment", "insurance"],
+    "social":           ["security", "retirement", "benefit", "government"],
+
+    # ── Retirement ────────────────────────────────────────────────────
+    "401k":             ["retirement", "pension", "ira", "employer", "savings"],
+    "ira":              ["retirement", "account", "tax", "traditional", "roth"],
+    "roth":             ["ira", "tax", "free", "retirement", "after", "tax"],
+    "traditional":      ["ira", "401k", "pretax", "deductible", "retirement"],
+    "rmd":              ["required", "minimum", "distribution", "retirement", "ira"],
+    "fire":             ["financial", "independence", "retire", "early"],
+    "pension":          ["defined", "benefit", "retirement", "income"],
+    "sepira":           ["self", "employed", "retirement", "ira"],
+    "403b":             ["retirement", "nonprofit", "403", "plan"],
+    "backdoor":         ["roth", "conversion", "retirement", "high", "income"],
+
+    # ── Tax ───────────────────────────────────────────────────────────
+    "tax":              ["taxes", "capital", "gains", "income", "deduction"],
+    "taxes":            ["tax", "filing", "irs", "deduction", "liability"],
+    "capitalgains":     ["tax", "profit", "investment", "short", "long", "term"],
+    "taxloss":          ["harvesting", "offset", "gains", "tax", "strategy"],
+    "deduction":        ["tax", "itemized", "standard", "expense", "write"],
+    "depreciation":     ["real", "estate", "tax", "deduction", "asset"],
+    "1031":             ["exchange", "real", "estate", "tax", "defer"],
+    "estate":           ["planning", "inheritance", "trust", "tax", "wealth"],
+    "trust":            ["estate", "planning", "legal", "asset", "protection"],
+
+    # ── Real estate ───────────────────────────────────────────────────
+    "reit":             ["real", "estate", "investment", "trust", "dividend"],
+    "caprate":          ["capitalization", "rate", "real", "estate", "yield"],
+    "noi":              ["net", "operating", "income", "real", "estate"],
+    "cashoncash":       ["return", "real", "estate", "rental", "income"],
+    "brrrr":            ["buy", "rehab", "rent", "refinance", "repeat", "real", "estate"],
+    "househacking":     ["real", "estate", "rental", "income", "primary"],
+    "fixflip":          ["real", "estate", "renovation", "profit", "strategy"],
+    "ltv":              ["loan", "to", "value", "mortgage", "real", "estate"],
+    "dscr":             ["debt", "service", "coverage", "ratio", "loan"],
+
+    # ── ETFs / Funds ──────────────────────────────────────────────────
+    "etf":              ["fund", "index", "exchange", "traded", "basket"],
+    "mutual":           ["fund", "etf", "managed", "portfolio", "investor"],
+    "index":            ["fund", "passive", "benchmark", "etf", "sp500"],
+    "passive":          ["investing", "index", "fund", "etf", "low", "cost"],
+    "active":           ["management", "fund", "alpha", "stock", "picking"],
+
+    # ── Private equity / VC ───────────────────────────────────────────
+    "pe":               ["private", "equity", "buyout", "leverage", "lbo"],
+    "lbo":              ["leveraged", "buyout", "private", "equity", "debt"],
+    "vc":               ["venture", "capital", "startup", "seed", "funding"],
+    "moic":             ["multiple", "invested", "capital", "return", "private", "equity"],
+    "tvpi":             ["total", "value", "paid", "private", "equity", "return"],
+    "jcurve":           ["private", "equity", "returns", "early", "loss"],
+    "carry":            ["carried", "interest", "profit", "private", "equity"],
+    "drypowder":        ["uninvested", "capital", "private", "equity", "cash"],
+    "gp":               ["general", "partner", "private", "equity", "fund"],
+    "lp":               ["limited", "partner", "private", "equity", "investor"],
+
+    # ── Hedge funds ───────────────────────────────────────────────────
+    "hedgefund":        ["fund", "alternative", "investment", "strategy"],
+    "longshort":        ["equity", "hedge", "fund", "strategy"],
+    "globalmacro":      ["macro", "fund", "strategy", "interest", "rates"],
+    "arbitrage":        ["risk", "free", "profit", "spread", "mispricing"],
+    "statarb":          ["statistical", "arbitrage", "pairs", "trading"],
+
+    # ── Behavioral finance ────────────────────────────────────────────
+    "bias":             ["behavioral", "cognitive", "psychology", "decision"],
+    "fomo":             ["fear", "missing", "out", "behavioral", "greed"],
+    "lossaversion":     ["loss", "behavioral", "bias", "pain", "gain"],
+    "anchoring":        ["bias", "behavioral", "reference", "point"],
+    "herding":          ["behavioral", "group", "crowd", "bias", "market"],
+    "overconfidence":   ["bias", "behavioral", "trading", "skill"],
+    "bubble":           ["asset", "price", "inflation", "speculation", "crash"],
+    "sentiment":        ["investor", "market", "fear", "greed", "behavioral"],
+
+    # ── Commodities ───────────────────────────────────────────────────
+    "commodities":      ["commodity", "gold", "oil", "futures", "raw"],
+    "commodity":        ["futures", "spot", "gold", "oil", "silver"],
+    "gold":             ["commodity", "safe", "haven", "inflation", "hedge"],
+    "oil":              ["crude", "energy", "commodity", "wti", "brent"],
+    "silver":           ["gold", "commodity", "precious", "metals"],
+    "futures":          ["contract", "derivative", "commodity", "forward"],
+    "contango":         ["futures", "spot", "commodity", "curve"],
+    "backwardation":    ["futures", "spot", "commodity", "curve"],
+
+    # ── Forex ─────────────────────────────────────────────────────────
+    "forex":            ["foreign", "exchange", "currency", "fx", "trading"],
+    "fx":               ["forex", "currency", "exchange", "foreign"],
+    "currency":         ["forex", "exchange", "rate", "pair", "appreciation"],
+    "pip":              ["forex", "currency", "price", "movement", "point"],
+    "carry":            ["trade", "forex", "interest", "rate", "strategy"],
+    "ppp":              ["purchasing", "power", "parity", "exchange", "rate"],
+    "eurusd":           ["euro", "dollar", "forex", "major", "pair"],
+
+    # ── Fintech / Blockchain ──────────────────────────────────────────
+    "fintech":          ["technology", "financial", "digital", "banking", "innovation"],
+    "roboadviser":      ["automated", "investing", "portfolio", "algorithm"],
+    "bnpl":             ["buy", "now", "pay", "later", "credit", "debt"],
+    "openbanking":      ["api", "banking", "data", "sharing", "fintech"],
+    "kyc":              ["know", "your", "customer", "compliance", "identity"],
+    "aml":              ["anti", "money", "laundering", "compliance", "regulation"],
+    "cbdc":             ["central", "bank", "digital", "currency", "fed"],
+
+    # ── IPO / Corporate actions ───────────────────────────────────────
+    "ipo":              ["initial", "public", "offering", "listing", "shares"],
+    "spac":             ["blank", "check", "company", "merger", "ipo"],
+    "spinoff":          ["corporate", "action", "separation", "subsidiary"],
+    "merger":           ["acquisition", "takeover", "consolidation", "deal"],
+    "acquisition":      ["merger", "buyout", "takeover", "purchase"],
+    "dividend":         ["yield", "income", "payout", "distribution", "reinvest"],
+    "buyback":          ["share", "repurchase", "return", "capital", "shareholders"],
+
+    # ── Quantitative finance ──────────────────────────────────────────
+    "quant":            ["quantitative", "algorithmic", "systematic", "model"],
+    "backtesting":      ["strategy", "historical", "performance", "simulation"],
+    "montecarlo":       ["simulation", "risk", "probability", "model"],
+    "regression":       ["analysis", "statistical", "factor", "model"],
+    "timeseries":       ["data", "analysis", "forecasting", "statistical"],
+    "ml":               ["machine", "learning", "algorithm", "prediction", "model"],
+    "hft":              ["high", "frequency", "trading", "algorithm", "speed"],
+    "factor":           ["investing", "value", "momentum", "quality", "model"],
+    "capm":             ["capital", "asset", "pricing", "model", "beta", "risk"],
+    "mpt":              ["modern", "portfolio", "theory", "efficient", "frontier"],
+}
+
 
 def _tokenize(text: str) -> list[str]:
     """Lowercase, split on non-alphanumeric, remove stop words, add bigrams."""
@@ -227,13 +562,20 @@ class KnowledgeBase:
     # ── Search ────────────────────────────────────────────────────────
 
     def _query_vec(self, query: str) -> dict[str, float]:
-        """Build a normalised TF-IDF vector for an arbitrary query string."""
+        """Build a normalised TF-IDF vector for an arbitrary query string.
+        Expands tokens with finance synonyms so different phrasings hit the same docs.
+        Synonym tokens get half weight so they assist but don't dominate.
+        """
         tokens = _tokenize(query)
         if not tokens:
             return {}
-        raw: dict[str, int] = defaultdict(int)
+        raw: dict[str, float] = defaultdict(float)
         for t in tokens:
-            raw[t] += 1
+            raw[t] += 1.0
+            # Expand with synonyms at half weight
+            for syn in _SYNONYMS.get(t, []):
+                for syn_tok in _tokenize(syn):
+                    raw[syn_tok] += 0.5
         vec = {}
         for t, c in raw.items():
             idf_val = self.idf.get(t, 0.0)
