@@ -29,24 +29,92 @@ from conversation_memory import ConversationMemory
 
 # ── UI constants ───────────────────────────────────────────────────────
 
-BANNER = f"""
-{Fore.CYAN}  ╔══════════════════════════════════════════════════════════════╗
-  ║      FinanceGPT  ·  Multi-Agent Reasoning System              ║
-  ║   Knowledge · Reasoning · Calculation · Generation            ║
-  ╚══════════════════════════════════════════════════════════════╝{Style.RESET_ALL}"""
+WIDTH = 84
+_W = WIDTH + 2   # full box width including borders
+
+def _make_banner(epochs_done: int = 0, best_ppl: float | None = None,
+                 kb_pairs: int = 0, model_params: float = 0.0) -> str:
+    """Build the two-panel welcome box dynamically after loading."""
+    # left panel content (centred in ~42 chars)
+    LP = 42
+    RP = _W - LP - 3  # right panel width
+
+    def lc(s: str) -> str:
+        """Centre string inside left panel."""
+        return s.center(LP)
+
+    ppl_str  = f"{best_ppl:.2f}" if best_ppl else "n/a"
+    ep_str   = str(epochs_done)
+    kb_str   = f"{kb_pairs:,}" if kb_pairs else "—"
+    mp_str   = f"{model_params:.1f}M" if model_params else "—"
+
+    left_lines = [
+        "",
+        lc("Welcome to  FinanceGPT!"),
+        lc(""),
+        lc("   _______   "),
+        lc("  / $   $ \\  "),
+        lc(" | $ $ $ $ | "),
+        lc(" |  $   $  | "),
+        lc("  \\_______/  "),
+        lc("    |   |    "),
+        lc("    |___|    "),
+        lc(""),
+        lc("Multi-Agent Reasoning System"),
+        lc(f"{mp_str} params  ·  31 datasets"),
+        lc(f"Epochs: {ep_str}  ·  Best ppl: {ppl_str}"),
+        lc(f"KB pairs: {kb_str}"),
+        "",
+    ]
+
+    right_lines = [
+        "",
+        " Agents",
+        " " + "─" * (RP - 2),
+        "  ✦  Knowledge    TF-IDF retrieval",
+        "  ✦  Calculation  Formula detection",
+        "  ✦  Reasoning    Chain-of-thought",
+        "  ✦  Model        Transformer gen",
+        "",
+        " Commands",
+        " " + "─" * (RP - 2),
+        "  /help    /agents   /history",
+        "  /reset   /clear    /info   exit",
+    ]
+
+    # pad both panels to same height
+    h = max(len(left_lines), len(right_lines))
+    left_lines  += [""] * (h - len(left_lines))
+    right_lines += [""] * (h - len(right_lines))
+
+    top    = "╭─── FinanceGPT v1.0 " + "─" * (_W - 21) + "╮"
+    sep    = "│" + " " * LP + "│" + " " * RP + "│"
+    bottom = "╰" + "─" * _W + "╯"
+
+    rows = [top]
+    for l, r in zip(left_lines, right_lines):
+        l_cell = l.ljust(LP)
+        r_cell = r.ljust(RP)
+        rows.append(f"│{l_cell}│{r_cell}│")
+    rows.append(bottom)
+
+    c = Fore.CYAN
+    rst = Style.RESET_ALL
+    return c + "\n".join(rows) + rst
+
 
 HELP_TEXT = f"""
 {Fore.YELLOW}  Commands:{Style.RESET_ALL}
   {Fore.CYAN}/help{Style.RESET_ALL}      show this message
-  {Fore.CYAN}/agents{Style.RESET_ALL}    show what each agent did last turn
+  {Fore.CYAN}/agents{Style.RESET_ALL}    per-agent breakdown for last query
   {Fore.CYAN}/history{Style.RESET_ALL}   show recent conversation history
-  {Fore.CYAN}/reset{Style.RESET_ALL}     clear this session's memory
-  {Fore.CYAN}/clear{Style.RESET_ALL}     clear screen
+  {Fore.CYAN}/reset{Style.RESET_ALL}     clear session memory
+  {Fore.CYAN}/clear{Style.RESET_ALL}     clear screen & restart view
   {Fore.CYAN}/info{Style.RESET_ALL}      model & knowledge base stats
   {Fore.CYAN}exit{Style.RESET_ALL}       quit
 """
 
-WIDTH = 84
+_DIVIDER = Fore.WHITE + Style.DIM + "─" * (_W + 2) + Style.RESET_ALL
 
 
 def _wrap(text: str, indent: str = "  ") -> str:
@@ -58,6 +126,25 @@ def _wrap(text: str, indent: str = "  ") -> str:
             wrapped = textwrap.wrap(paragraph, width=WIDTH - len(indent))
             lines.extend(indent + ln for ln in wrapped)
     return "\n".join(lines)
+
+
+def _prompt() -> str:
+    """Sandwiched prompt — both dividers visible before the user types."""
+    print(_DIVIDER)
+    # Write "❯ ", save cursor, pre-draw bottom divider, restore cursor
+    sys.stdout.write(Fore.YELLOW + "❯ " + Style.RESET_ALL)
+    sys.stdout.write("\033[s")              # save cursor (right after ❯ )
+    sys.stdout.write("\n" + _DIVIDER + "\n")
+    sys.stdout.write("\033[u")              # jump back to after ❯
+    sys.stdout.flush()
+    try:
+        raw = sys.stdin.readline().rstrip("\n")
+    except (EOFError, KeyboardInterrupt):
+        raise KeyboardInterrupt
+    # After Enter the cursor is on the bottom-divider line; move past it
+    sys.stdout.write("\033[1B")
+    sys.stdout.flush()
+    return raw.strip()
 
 
 def _agent_summary(info: dict) -> str:
@@ -124,8 +211,8 @@ def chat_interface():
         print(Fore.YELLOW + "  Run:  python main.py /train\n")
         sys.exit(1)
 
-    print(BANNER)
-    print()
+    # Print a minimal loading header while assets boot
+    print(f"\n{Fore.CYAN}  Loading FinanceGPT…{Style.RESET_ALL}\n")
 
     try:
         model, tok, kb, orchestrator, memory, ckpt = _load_all(GEN_CONFIG)
@@ -139,21 +226,39 @@ def chat_interface():
         (e["val_loss"] for e in hist.get("val_epochs", [])),
         default=None,
     )
+    best_ppl = math.exp(min(best_val, 10)) if best_val else None
 
-    print(f"\n{Fore.WHITE}  {'─'*62}")
-    print(f"  Epochs trained : {epochs_done}")
-    if best_val:
-        print(f"  Best val ppl   : {math.exp(min(best_val, 10)):.2f}")
-    print(f"  Memory turns   : {memory.total_turns} (loaded from disk)")
-    print(f"  {'─'*62}")
-    print(f"\n{Fore.GREEN}  Ready. Ask anything about finance. /help for commands.{Style.RESET_ALL}\n")
+    # Now render the full welcome banner with real stats
+    os.system("cls" if os.name == "nt" else "clear")
+    print()
+    print(_make_banner(
+        epochs_done=epochs_done,
+        best_ppl=best_ppl,
+        kb_pairs=len(kb),
+        model_params=model.num_params() / 1e6,
+    ))
+    print(f"\n{Fore.WHITE + Style.DIM}  Memory turns loaded: {memory.total_turns}{Style.RESET_ALL}")
+    print(f"{Fore.GREEN}  Ready — ask anything about finance.  Type /help for commands.{Style.RESET_ALL}")
 
     last_agent_info: dict = {}
 
+    # helper: redraws the full welcome screen (used by /clear)
+    def _redraw_home():
+        os.system("cls" if os.name == "nt" else "clear")
+        print()
+        print(_make_banner(
+            epochs_done=epochs_done,
+            best_ppl=best_ppl,
+            kb_pairs=len(kb),
+            model_params=model.num_params() / 1e6,
+        ))
+        print(f"\n{Fore.WHITE + Style.DIM}  Memory turns loaded: {memory.total_turns}{Style.RESET_ALL}")
+        print(f"{Fore.GREEN}  Ready — ask anything about finance.  Type /help for commands.{Style.RESET_ALL}")
+
     while True:
         try:
-            user_in = input(Fore.YELLOW + "  You ► " + Style.RESET_ALL).strip()
-        except (EOFError, KeyboardInterrupt):
+            user_in = _prompt()
+        except KeyboardInterrupt:
             print(Fore.YELLOW + "\n\n  Goodbye!\n")
             break
 
@@ -163,8 +268,9 @@ def chat_interface():
         cmd = user_in.lower().strip()
 
         # ── Commands ────────────────────────────────────────────────
-        if cmd in ("exit", "quit", "bye"):
-            print(Fore.YELLOW + "\n  Goodbye!\n")
+        if cmd in ("exit", "quit", "bye", "/exit", "/quit"):
+            print(_DIVIDER)
+            print(Fore.YELLOW + "  Goodbye!\n")
             break
 
         if cmd == "/help":
@@ -172,14 +278,12 @@ def chat_interface():
             continue
 
         if cmd == "/clear":
-            os.system("cls" if os.name == "nt" else "clear")
-            print(BANNER)
-            print()
+            _redraw_home()
             continue
 
         if cmd == "/reset":
             memory.clear_session()
-            print(Fore.YELLOW + "  Session memory cleared.\n")
+            print(f"\n{Fore.YELLOW}  Session memory cleared.{Style.RESET_ALL}\n")
             continue
 
         if cmd == "/history":
@@ -195,7 +299,7 @@ def chat_interface():
                     print(_agent_summary(info))
                 print()
             else:
-                print(Fore.YELLOW + "  No queries yet.\n")
+                print(f"\n{Fore.YELLOW}  No queries yet.{Style.RESET_ALL}\n")
             continue
 
         if cmd == "/info":
@@ -209,7 +313,7 @@ def chat_interface():
             continue
 
         # ── Multi-agent query ───────────────────────────────────────
-        print(f"{Fore.CYAN}  ⟳ Agents thinking…{Style.RESET_ALL}", end="", flush=True)
+        print(f"\n{Fore.CYAN}  ⟳  Agents thinking…{Style.RESET_ALL}", end="", flush=True)
         t_start = time.perf_counter()
 
         try:
@@ -219,20 +323,20 @@ def chat_interface():
             last_agent_info = agent_info
 
             # Clear "thinking" line
-            print(f"\r{' ' * 26}\r", end="")
+            print(f"\r{' ' * 30}\r", end="")
 
-            # Print response
+            # Print response box
             print(f"\n{Fore.GREEN}  FinanceGPT ►{Style.RESET_ALL}")
             print(_wrap(response))
 
-            # Show source tags
+            # Footer: sources + type + timing
             sources = [
                 r["source"].replace("_", " ").title()
                 for r in agent_info["knowledge"].get("results", [])[:2]
             ]
             qtype = agent_info["reasoning"].get("question_type", "")
-            src_str = f"  Sources: {', '.join(sources)} | " if sources else "  "
-            print(f"\n{Fore.CYAN}{src_str}Type: {qtype} | {elapsed:.1f}s{Style.RESET_ALL}\n")
+            src_str = f"  Sources: {', '.join(sources)}  │  " if sources else "  "
+            print(f"\n{Fore.CYAN + Style.DIM}{src_str}type: {qtype}  │  {elapsed:.1f}s{Style.RESET_ALL}\n")
 
             # Persist turn
             memory.add_turn(user_in, response)

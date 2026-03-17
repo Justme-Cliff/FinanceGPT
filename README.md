@@ -11,7 +11,7 @@
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0%2B-EE4C2C?style=for-the-badge&logo=pytorch&logoColor=white)](https://pytorch.org)
 [![License](https://img.shields.io/badge/License-MIT-22C55E?style=for-the-badge)](LICENSE)
 [![Topics](https://img.shields.io/badge/Finance_Domains-31-F97316?style=for-the-badge)](data/)
-[![Parameters](https://img.shields.io/badge/Parameters-~10M-8B5CF6?style=for-the-badge)](model.py)
+[![Parameters](https://img.shields.io/badge/Parameters-~6M-8B5CF6?style=for-the-badge)](model.py)
 [![Status](https://img.shields.io/badge/Status-Active-22C55E?style=for-the-badge)]()
 
 </div>
@@ -34,7 +34,7 @@ The system is designed around a key insight: **retrieval + reasoning + generatio
 
 | Component | Technology |
 |---|---|
-| Language Model | Decoder-only transformer (RoPE · RMSNorm · SwiGLU) |
+| Language Model | Decoder-only transformer — 4 layers · d_model=256 · 8 heads (RoPE · RMSNorm · SwiGLU) |
 | Tokenizer | Custom BPE trained from scratch on finance text |
 | Knowledge Retrieval | TF-IDF cosine similarity over 1,200+ Q&A pairs |
 | Reasoning | Rule-based CoT scaffold with 8-type question classifier |
@@ -84,16 +84,16 @@ flowchart TD
 flowchart TD
     A["Input Tokens"] --> B
 
-    B["Embedding Layer\nd_model = 384"]
+    B["Embedding Layer\nd_model = 256"]
     B --> C
 
-    subgraph Block ["Transformer Block ×8"]
+    subgraph Block ["Transformer Block ×4"]
         direction TB
         C1["RMSNorm"] --> C2
         C2["Multi-Head Attention\n8 heads · Causal mask\nRoPE positional encoding"] --> C3
         C3["Residual Add"] --> C4
         C4["RMSNorm"] --> C5
-        C5["SwiGLU MLP\nd_ff = 1536\nsilu(gate·x) × up(x) → down"] --> C6
+        C5["SwiGLU MLP\nd_ff = 768\nsilu(gate·x) × up(x) → down"] --> C6
         C6["Residual Add"]
     end
 
@@ -209,7 +209,7 @@ On startup, all agents initialise and report their status:
 | `/agents` | Show per-agent breakdown for the last query — timing, retrieval results, calculation output |
 | `/history` | Show recent conversation memory |
 | `/reset` | Clear current session memory |
-| `/clear` | Clear the terminal screen |
+| `/clear` | Clear the terminal and redraw the welcome screen |
 | `/info` | Show model stats: vocab size, parameter count, val loss, perplexity |
 | `/help` | List all available commands |
 | `exit` | Quit |
@@ -231,10 +231,11 @@ Displays model architecture, training stats, best validation loss, and perplexit
 </div>
 
 ```
-  You ► What is the Sharpe ratio and calculate it for a fund
-        with 15% return, 3% risk-free rate, and 10% volatility?
+────────────────────────────────────────────────────────────────────────────────────
+❯ What is the Sharpe ratio and calculate it for a fund
+  with 15% return, 3% risk-free rate, and 10% volatility?
 
-  ⟳ Agents thinking…
+  ⟳  Agents thinking…
 
   FinanceGPT ►
   Calculated:
@@ -249,7 +250,7 @@ Displays model architecture, training stats, best validation loss, and perplexit
   of volatility it accepts. Therefore, this fund demonstrates solid
   risk-adjusted performance relative to a passive benchmark.
 
-  Sources: Quantitative Finance, Finance Fundamentals | Type: calculation | 1.8s
+  Sources: Quantitative Finance, Finance Fundamentals  │  type: calculation  │  1.8s
 ```
 
 ---
@@ -353,20 +354,24 @@ All hyperparameters live in `config.py` — the single source of truth.
 
 ```python
 MODEL_CONFIG = {
-    "d_model": 384,       # Embedding dimension
-    "n_heads": 8,         # Attention heads
-    "n_layers": 8,        # Transformer blocks
-    "d_ff": 1536,         # FFN inner dim (4× d_model)
-    "max_seq_len": 512,   # Context window (tokens)
+    "d_model": 256,       # Embedding dimension
+    "n_heads": 8,         # Attention heads  (d_k = 32)
+    "n_layers": 4,        # Transformer blocks
+    "d_ff": 768,          # FFN inner dim (3× d_model)
+    "max_seq_len": 256,   # Context window (tokens)
     "dropout": 0.10,
 }
 
 TRAIN_CONFIG = {
-    "epochs": 15,
-    "batch_size": 16,
-    "grad_accum": 4,      # Effective batch = 64
+    "epochs": 25,
+    "batch_size": 32,
+    "grad_accum": 2,      # Effective batch = 64
     "lr": 2e-4,
-    "patience": 4,        # Early stopping patience
+    "min_lr": 5e-6,
+    "warmup_steps": 200,
+    "grad_clip": 1.0,
+    "label_smoothing": 0.05,
+    "patience": 8,        # Early stopping patience
     "mixed_precision": True,
 }
 

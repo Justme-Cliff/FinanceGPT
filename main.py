@@ -63,6 +63,12 @@ def main():
     elif cmd == "/info":
         cmd_info()
 
+    elif cmd in ("/agents", "/history", "/reset", "/clear", "/help"):
+        print(f"\n  '{sys.argv[1]}' is an in-chat command.")
+        print("  Start a chat session first:\n")
+        print("    python main.py /chat\n")
+        print(f"  Then type {sys.argv[1]} at the prompt.")
+
     else:
         print(f"  Unknown command: {sys.argv[1]}")
         usage()
