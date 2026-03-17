@@ -181,12 +181,15 @@ def audio_interface():
             speak(tts, msg)
             continue
 
-        # Stock quick lookup
-        from stock_tools import detect_ticker, get_stock_info, format_stock_summary
-        ticker = detect_ticker(text)
+        # Company / stock lookup
+        from stock_tools import detect_company_query, get_stock_info, format_stock_summary, get_company_overview
+        ticker, qtype = detect_company_query(text)
         if ticker:
-            data = get_stock_info(ticker)
-            msg  = format_stock_summary(data)
+            if qtype == "overview":
+                msg = get_company_overview(ticker)
+            else:
+                data = get_stock_info(ticker)
+                msg  = format_stock_summary(data)
             print(f"\n{Fore.GREEN}  FinanceGPT ►{Style.RESET_ALL}\n{msg}\n")
             speak(tts, msg)
             continue

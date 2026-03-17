@@ -41,6 +41,7 @@ The system is designed around a key insight: **retrieval + reasoning + generatio
 | Agent Orchestration | `ThreadPoolExecutor` — parallel Phase 1 agents |
 | Memory | JSON-backed conversation history, persistent across sessions |
 | Live Market Data | `yfinance` — real-time stock, crypto, and index prices (no API key) |
+| Web Search Fallback | `duckduckgo-search` — fires when KB confidence is low (no API key) |
 | Voice Mode | `pyttsx3` TTS (local) + `SpeechRecognition` STT (free) |
 | Hardware | CPU and CUDA (mixed precision via `torch.autocast`) |
 
@@ -116,7 +117,8 @@ flowchart TD
 
 - **4-agent parallel reasoning** — Knowledge and Calculation agents run simultaneously with zero sequential bottleneck
 - **Live market data** — real-time stock prices, crypto, and indices via `yfinance` (no API key required)
-- **Live data fetcher** — `/fetch` command pulls live market data and auto-generates training CSVs
+- **Live data fetcher** — `/fetch` pulls live market data, generates a CSV, and auto-trains the model in one shot — no duplicates, fixed filenames
+- **Web search fallback** — when a question isn't in the training data, DuckDuckGo (free, no key) fetches live web results and injects them into the model's context automatically
 - **Portfolio tracker** — track your holdings locally with live P&L and % gain/loss per position
 - **Voice mode** — `/audio` for full hands-free operation: speak your question, hear the answer
 - **Live financial math** — automatically detects and computes Sharpe Ratio, ROI, Compound Interest, Present Value, and EV/EBITDA directly from your query
@@ -224,18 +226,20 @@ python main.py /stock TSLA
 
 ### Live Data Fetcher
 
-Pulls real-time market data and generates Q&A training CSVs automatically:
+Pulls real-time market data, generates Q&A training CSVs, and **automatically fine-tunes the model** — all in one command:
 
 ```bash
-python main.py /fetch stocks    # top 20 S&P stocks
-python main.py /fetch crypto    # top 10 cryptocurrencies
-python main.py /fetch market    # major indices (S&P, Dow, NASDAQ, VIX)
-python main.py /fetch sectors   # all 11 sector ETFs
-python main.py /fetch all       # everything above
+python main.py /fetch stocks    # fetch top 20 S&P stocks → auto-train
+python main.py /fetch crypto    # fetch top 10 crypto → auto-train
+python main.py /fetch market    # fetch major indices → auto-train
+python main.py /fetch sectors   # fetch sector ETFs → auto-train
+python main.py /fetch all       # fetch everything → auto-train all
 
-# Then fine-tune on the fresh data:
-python main.py /train data/fetched_stocks_20260317.csv
+# Fetch only (skip training):
+python main.py /fetch stocks --no-train
 ```
+
+Each topic always writes to a **fixed filename** (`fetched_stocks.csv`, `fetched_crypto.csv`, etc.) — running `/fetch` multiple times overwrites the same file, never creates duplicates.
 
 ### Portfolio Tracker
 

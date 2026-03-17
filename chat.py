@@ -133,21 +133,14 @@ def _wrap(text: str, indent: str = "  ") -> str:
 
 
 def _prompt() -> str:
-    """Sandwiched prompt — both dividers visible before the user types."""
+    """Simple sandwiched prompt — divider above and below the input line."""
     print(_DIVIDER)
-    # Write "❯ ", save cursor, pre-draw bottom divider, restore cursor
     sys.stdout.write(Fore.YELLOW + "❯ " + Style.RESET_ALL)
-    sys.stdout.write("\033[s")              # save cursor (right after ❯ )
-    sys.stdout.write("\n" + _DIVIDER + "\n")
-    sys.stdout.write("\033[u")              # jump back to after ❯
     sys.stdout.flush()
     try:
         raw = sys.stdin.readline().rstrip("\n")
     except (EOFError, KeyboardInterrupt):
         raise KeyboardInterrupt
-    # After Enter the cursor is on the bottom-divider line; move past it
-    sys.stdout.write("\033[1B")
-    sys.stdout.flush()
     return raw.strip()
 
 
@@ -167,6 +160,9 @@ def _agent_summary(info: dict) -> str:
     elif "Model" in agent:
         r = info.get("response", "")
         detail = f"generated {len(r)} chars" if r else "empty output"
+    elif "Web" in agent:
+        n = len(info.get("results", []))
+        detail = f"{n} results" if info.get("used") else "not triggered (KB had match)"
     else:
         detail = ""
 
@@ -312,7 +308,9 @@ def chat_interface():
         if cmd == "/agents":
             if last_agent_info:
                 print(f"\n{Fore.CYAN}  Agent activity (last query):{Style.RESET_ALL}")
-                for info in last_agent_info.values():
+                for key, info in last_agent_info.items():
+                    if key == "web":
+                        info = {**info, "agent": "WebSearchAgent"}
                     print(_agent_summary(info))
                 print()
             else:
@@ -358,12 +356,33 @@ def chat_interface():
 
         # ── Multi-agent query ───────────────────────────────────────
 
-        # Auto-detect stock queries and inject live data as context prefix
+        # Auto-detect company/stock queries and route to right response
         live_prefix = ""
         try:
-            from stock_tools import detect_ticker, get_stock_info, format_stock_summary
-            ticker = detect_ticker(user_in)
-            if ticker:
+            from stock_tools import detect_company_query, get_stock_info, format_stock_summary, get_company_overview
+            ticker, qtype = detect_company_query(user_in)
+
+            if ticker and qtype == "overview":
+                print(f"\n{Fore.CYAN}  ⟳ Looking up {ticker}…{Style.RESET_ALL}", end="", flush=True)
+                overview = get_company_overview(ticker)
+                print(f"\r{' ' * 30}\r", end="")
+                print(f"\n{Fore.GREEN}  FinanceGPT ►{Style.RESET_ALL}")
+                print(_wrap(overview))
+                print(f"\n{Fore.CYAN + Style.DIM}  Source: Live (yfinance)  │  type: company_overview{Style.RESET_ALL}\n")
+                memory.add_turn(user_in, overview)
+                continue
+
+            elif qtype == "unknown_company":
+                msg = (f"I don't have '{ticker}' in my database. "
+                       f"If it's a publicly traded company, try: /stock TICKER\n"
+                       f"Or ask me something finance-related and I'll do my best!")
+                print(f"\n{Fore.GREEN}  FinanceGPT ►{Style.RESET_ALL}")
+                print(_wrap(msg))
+                print()
+                memory.add_turn(user_in, msg)
+                continue
+
+            elif ticker and qtype == "price":
                 data = get_stock_info(ticker)
                 if "error" not in data:
                     live_prefix = f"[Live data] {format_stock_summary(data)}\n\n"
@@ -371,6 +390,7 @@ def chat_interface():
             pass
 
         print(f"\n{Fore.CYAN}  ⟳  Agents thinking…{Style.RESET_ALL}", end="", flush=True)
+
         t_start = time.perf_counter()
 
         try:
@@ -395,6 +415,9 @@ def chat_interface():
                 r["source"].replace("_", " ").title()
                 for r in agent_info["knowledge"].get("results", [])[:2]
             ]
+            web_used = agent_info.get("web", {}).get("used", False)
+            if web_used:
+                sources.append("🌐 Web")
             qtype = agent_info["reasoning"].get("question_type", "")
             src_str = f"  Sources: {', '.join(sources)}  │  " if sources else "  "
             print(f"\n{Fore.CYAN + Style.DIM}{src_str}type: {qtype}  │  {elapsed:.1f}s{Style.RESET_ALL}\n")

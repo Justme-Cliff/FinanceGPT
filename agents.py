@@ -344,13 +344,46 @@ class AgentOrchestrator:
             kb_result   = kb_future.result()
             calc_result = calc_future.result()
 
-        # ── Phase 2: Reasoning (depends on knowledge) ───────────────
+        # ── Phase 1b: Web search fallback (when KB confidence is low) ─
+        web_result = {"agent": "WebSearchAgent", "results": [], "used": False, "success": True, "off_topic": False}
+        # Exclude conversation.csv — it inflates scores for unrelated queries
+        finance_kb_results = [
+            r for r in kb_result.get("results", [])
+            if r.get("source", "") != "conversation"
+        ]
+        try:
+            from web_search import needs_web_search, web_search, format_web_results, _is_off_topic
+            if _is_off_topic(query):
+                web_result["off_topic"] = True
+            elif needs_web_search(finance_kb_results, query):
+                raw = web_search(query, max_results=4)
+                web_result["results"] = raw
+                web_result["used"]    = bool(raw)
+        except Exception:
+            pass
+
+        # ── Phase 2: Reasoning (depends on knowledge + web) ─────────
         r_agent = ReasoningAgent(self.r_engine)
+        # Merge KB results with web snippets for context building
+        kb_results_for_reasoning = kb_result.get("results", [])
+        if web_result["used"]:
+            from web_search import format_web_results
+            web_context = format_web_results(web_result["results"])
+        else:
+            web_context = ""
+
         reasoning_result = r_agent.run(
             query,
-            kb_result.get("results", []),
+            kb_results_for_reasoning,
             history,
         )
+
+        # Append web context to reasoning context if available
+        if web_context:
+            existing = reasoning_result.get("context", "")
+            reasoning_result["context"] = (
+                web_context + "\n\n" + existing if existing else web_context
+            )
 
         # ── Phase 3: Model generation ────────────────────────────────
         prompt = self.r_engine.build_prompt(
@@ -362,7 +395,7 @@ class AgentOrchestrator:
 
         # ── Synthesis ────────────────────────────────────────────────
         response = self._synthesize(
-            query, model_result, kb_result, calc_result, reasoning_result
+            query, model_result, kb_result, calc_result, reasoning_result, web_result
         )
 
         agent_info = {
@@ -370,6 +403,7 @@ class AgentOrchestrator:
             "reasoning":   reasoning_result,
             "calculation": calc_result,
             "model":       model_result,
+            "web":         web_result,
         }
         return response, agent_info
 
@@ -380,6 +414,7 @@ class AgentOrchestrator:
         kb_result: dict,
         calc_result: dict,
         reasoning_result: dict,
+        web_result: dict | None = None,
     ) -> str:
         parts: list[str] = []
 
@@ -393,8 +428,38 @@ class AgentOrchestrator:
 
         model_text = model_result.get("response", "").strip()
         kb_results = kb_result.get("results", [])
-        best_kb = kb_results[0] if kb_results else None
+        # Exclude conversation.csv from best-match scoring — it pollutes relevance for real queries
+        finance_kb_results = [r for r in kb_results if r.get("source", "") != "conversation"]
+        best_kb = finance_kb_results[0] if finance_kb_results else (kb_results[0] if kb_results else None)
         best_kb_score = best_kb["score"] if best_kb else 0.0
+        web_used      = web_result and web_result.get("used") and web_result.get("results")
+        off_topic     = web_result and web_result.get("off_topic", False)
+
+        # Off-topic query — politely redirect
+        if off_topic:
+            parts.append(
+                "I'm a finance AI — that topic is outside my scope. "
+                "Ask me about stocks, investing, crypto, budgeting, markets, or anything money-related!"
+            )
+            return "\n".join(parts)
+
+        # If web search fired, prioritize web results over static KB answers —
+        # the user asked for live/current info and the KB answer is likely stale/generic.
+        if web_used:
+            web_results = web_result["results"]
+            parts.append("Here's what I found online:\n")
+            for r in web_results[:3]:
+                title   = r.get("title", "").strip()
+                snippet = r.get("snippet", "").strip()
+                url     = r.get("url", "").strip()
+                if snippet:
+                    parts.append(f"• {title}")
+                    parts.append(f"  {snippet}")
+                    if url:
+                        parts.append(f"  {url}")
+                    parts.append("")
+            parts.append("[Source: Web Search]")
+            return "\n".join(parts)
 
         # Use KB answer directly when:
         #   1. Model output is absent or too short
@@ -404,17 +469,15 @@ class AgentOrchestrator:
         if model_text and len(model_text) >= 30 and not use_kb_direct:
             parts.append(model_text)
         elif best_kb:
-            # Prefer the high-scoring KB answer — it's from curated training data
             parts.append(best_kb["answer"])
             src = best_kb["source"].replace("_", " ").title()
             parts.append(f"\n[Source: {src}]")
         elif model_text and len(model_text) >= 30:
-            # KB had nothing useful but model produced something
             parts.append(model_text)
         else:
             parts.append(
-                "I don't have specific data on that yet. "
-                "Try training on more CSV files or rephrase your question."
+                "I don't have specific data on that in my training data. "
+                "Try running /fetch to pull live market data, or add a CSV for this topic and retrain."
             )
 
         return "\n".join(parts)

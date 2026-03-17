@@ -1,23 +1,30 @@
 """
 FinanceGPT — Live Data Fetcher
 ================================
-Pulls live market data via yfinance and generates Q&A CSV files
-that can be used to retrain or fine-tune the model.
+Pulls live market data via yfinance and generates Q&A CSV files,
+then automatically fine-tunes the model on the new data in one shot.
+
+Each topic always writes to a fixed filename (no date suffix) so
+running /fetch multiple times never creates duplicate CSV files.
 
 Usage:
-  python main.py /fetch stocks        top 20 S&P stocks Q&A
-  python main.py /fetch crypto        top 10 crypto Q&A
-  python main.py /fetch market        major indices overview
-  python main.py /fetch sectors       sector ETF performance
-  python main.py /fetch all           everything above
+  python main.py /fetch stocks        fetch + train on top 20 S&P stocks
+  python main.py /fetch crypto        fetch + train on top 10 crypto
+  python main.py /fetch market        fetch + train on major indices
+  python main.py /fetch sectors       fetch + train on sector ETFs
+  python main.py /fetch all           fetch + train on everything above
+  python main.py /fetch stocks --no-train   fetch only, skip training
 
-Output: data/fetched_<topic>.csv  (question,answer format)
-Then run: python main.py /train data/fetched_<topic>.csv
+Output files (always overwritten, never duplicated):
+  data/fetched_stocks.csv
+  data/fetched_crypto.csv
+  data/fetched_market.csv
+  data/fetched_sectors.csv
 """
 
 import csv
 import os
-from datetime import datetime, date
+from datetime import datetime
 
 from config import DATA_DIR
 
@@ -81,7 +88,7 @@ def _write_csv(rows: list[tuple[str, str]], filename: str):
 
 
 def _today():
-    return date.today().strftime("%B %d, %Y")
+    return datetime.now().strftime("%B %d, %Y")
 
 
 # ── Fetch functions ──────────────────────────────────────────────────────
@@ -131,7 +138,7 @@ def fetch_stocks() -> str:
         except Exception as e:
             tqdm.write(f"    {ticker}: skipped ({e})")
 
-    return _write_csv(rows, f"fetched_stocks_{date.today().strftime('%Y%m%d')}.csv")
+    return _write_csv(rows, "fetched_stocks.csv")
 
 
 def fetch_crypto() -> str:
@@ -170,7 +177,7 @@ def fetch_crypto() -> str:
         except Exception as e:
             tqdm.write(f"    {symbol}: skipped ({e})")
 
-    return _write_csv(rows, f"fetched_crypto_{date.today().strftime('%Y%m%d')}.csv")
+    return _write_csv(rows, "fetched_crypto.csv")
 
 
 def fetch_market() -> str:
@@ -213,7 +220,7 @@ def fetch_market() -> str:
             f"Market summary as of {_today()}:\n" + "\n".join(f"  • {l}" for l in summary_lines),
         ))
 
-    return _write_csv(rows, f"fetched_market_{date.today().strftime('%Y%m%d')}.csv")
+    return _write_csv(rows, "fetched_market.csv")
 
 
 def fetch_sectors() -> str:
@@ -254,7 +261,7 @@ def fetch_sectors() -> str:
             f"({worst[2]}{worst[1]:.2f}%).",
         ))
 
-    return _write_csv(rows, f"fetched_sectors_{date.today().strftime('%Y%m%d')}.csv")
+    return _write_csv(rows, "fetched_sectors.csv")
 
 
 # ── CLI entry ────────────────────────────────────────────────────────────
@@ -268,7 +275,8 @@ TOPICS = {
 
 
 def fetch_cli(args: list[str]):
-    topic = args[0].lower() if args else "all"
+    topic    = args[0].lower() if args else "all"
+    no_train = "--no-train" in args   # skip auto-train if flag passed
 
     print(f"\n  FinanceGPT — Live Data Fetcher")
     print(f"  Fetching: {topic}  ({datetime.now().strftime('%Y-%m-%d %H:%M')})\n")
@@ -280,11 +288,24 @@ def fetch_cli(args: list[str]):
     elif topic in TOPICS:
         fetched.append(TOPICS[topic]())
     else:
-        print(f"  Unknown topic '{topic}'. Available: {', '.join(TOPICS)} or 'all'")
+        print(f"  Unknown topic '{topic}'. Available: {', '.join(TOPICS)}, 'all'")
+        print(f"  Add --no-train to skip automatic training after fetch.")
         return
 
-    print(f"\n  Done! {len(fetched)} CSV(s) generated.")
-    print("  To train on the new data:")
+    print(f"\n  ✓ {len(fetched)} CSV(s) written (always overwrites — no duplicates).")
+
+    if no_train:
+        print("  Skipping training (--no-train flag set).")
+        print("  To train manually:")
+        for path in fetched:
+            print(f"    python main.py /train {path}")
+        print()
+        return
+
+    # ── Auto-train on each fetched CSV ───────────────────────────────────
+    from trainer import train as _train
     for path in fetched:
-        print(f"    python main.py /train {path}")
-    print()
+        print(f"\n  ── Auto-training on {path} ──────────────────────────────")
+        _train(csv_file=path)
+
+    print(f"\n  ✓ Fetch + train complete. Your model now knows today's market data.\n")
