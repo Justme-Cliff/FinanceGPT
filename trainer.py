@@ -183,15 +183,22 @@ def train(csv_file: str = None):
     if os.path.exists(TOKENIZER):
         tok.load(TOKENIZER)
         print(f"  Existing vocab: {tok.vocab_size}")
-        # Re-train to absorb new text (cumulative BPE)
-        old_vocab = dict(tok.vocab)
-        tok.train(texts, vocab_size=10_000)
-        added = tok.vocab_size - len(old_vocab)
-        if added > 0:
-            print(f"  +{added} new tokens → {tok.vocab_size} total")
+        if csv_file is None:
+            # Full retrain: absorb new text into the tokenizer (cumulative BPE)
+            old_vocab = dict(tok.vocab)
+            tok.train(texts, vocab_size=10_000)
+            added = tok.vocab_size - len(old_vocab)
+            if added > 0:
+                print(f"  +{added} new tokens → {tok.vocab_size} total")
+            else:
+                print(f"  Vocab unchanged ({tok.vocab_size} tokens)")
+            tok.save(TOKENIZER)
+        else:
+            # Single-file fine-tune: keep existing tokenizer to preserve vocab
+            print(f"  Fine-tune mode — keeping existing tokenizer (vocab frozen)")
     else:
         tok.train(texts, vocab_size=10_000)
-    tok.save(TOKENIZER)
+        tok.save(TOKENIZER)
 
     # ── Dataset ───────────────────────────────────────────────────────
     print("\n[3/5] Building dataset…")

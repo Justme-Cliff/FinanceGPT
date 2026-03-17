@@ -5,7 +5,17 @@ FinanceGPT — Entry Point
   python main.py /train                        train on ALL CSVs in data/
   python main.py /train data/economics.csv     train on one specific CSV
   python main.py /chat                         interactive chat session
+  python main.py /audio                        voice mode (STT + TTS)
   python main.py /info                         show model & training stats
+  python main.py /fetch stocks                 fetch live stock data → CSV
+  python main.py /fetch crypto                 fetch live crypto data → CSV
+  python main.py /fetch market                 fetch market indices → CSV
+  python main.py /fetch sectors                fetch sector performance → CSV
+  python main.py /fetch all                    fetch everything above
+  python main.py /portfolio show               show portfolio with live P&L
+  python main.py /portfolio add TICKER N PRICE add a holding
+  python main.py /portfolio remove TICKER      remove a holding
+  python main.py /stock TICKER                 quick live stock lookup
 """
 import os
 import sys
@@ -60,8 +70,30 @@ def main():
         from chat import chat_interface
         chat_interface()
 
+    elif cmd == "/audio":
+        from audio_mode import audio_interface
+        audio_interface()
+
     elif cmd == "/info":
         cmd_info()
+
+    elif cmd == "/fetch":
+        from fetcher import fetch_cli
+        fetch_cli(sys.argv[2:])
+
+    elif cmd == "/portfolio":
+        from portfolio import portfolio_cli
+        portfolio_cli(sys.argv[2:])
+
+    elif cmd == "/stock":
+        if len(sys.argv) < 3:
+            print("  Usage: python main.py /stock TICKER")
+            sys.exit(1)
+        from stock_tools import get_stock_info, format_stock_summary
+        ticker = sys.argv[2].upper()
+        print(f"\n  Fetching {ticker}…")
+        data = get_stock_info(ticker)
+        print("\n" + format_stock_summary(data) + "\n")
 
     elif cmd in ("/agents", "/history", "/reset", "/clear", "/help"):
         print(f"\n  '{sys.argv[1]}' is an in-chat command.")

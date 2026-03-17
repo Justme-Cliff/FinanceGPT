@@ -10,7 +10,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0%2B-EE4C2C?style=for-the-badge&logo=pytorch&logoColor=white)](https://pytorch.org)
 [![License](https://img.shields.io/badge/License-MIT-22C55E?style=for-the-badge)](LICENSE)
-[![Topics](https://img.shields.io/badge/Finance_Domains-31-F97316?style=for-the-badge)](data/)
+[![Topics](https://img.shields.io/badge/Finance_Domains-32-F97316?style=for-the-badge)](data/)
 [![Parameters](https://img.shields.io/badge/Parameters-~6M-8B5CF6?style=for-the-badge)](model.py)
 [![Status](https://img.shields.io/badge/Status-Active-22C55E?style=for-the-badge)]()
 
@@ -28,7 +28,7 @@
 
 ## What Is FinanceGPT?
 
-FinanceGPT is a production-quality finance language model built from the ground up — every component is custom-built, including the neural network architecture, the tokenizer, and the multi-agent reasoning pipeline. It answers financial questions with structured, step-by-step reasoning grounded in a curated knowledge base of 1,200+ finance Q&A pairs across 31 domains.
+FinanceGPT is a production-quality finance language model built from the ground up — every component is custom-built, including the neural network architecture, the tokenizer, and the multi-agent reasoning pipeline. It answers financial questions with structured, step-by-step reasoning grounded in a curated knowledge base of 1,200+ finance Q&A pairs across 32 domains.
 
 The system is designed around a key insight: **retrieval + reasoning + generation beats generation alone.** Rather than relying solely on what the model memorised during training, every query passes through a 4-agent pipeline that retrieves relevant knowledge, detects and computes financial formulas, scaffolds chain-of-thought reasoning, and finally generates a grounded response.
 
@@ -40,6 +40,8 @@ The system is designed around a key insight: **retrieval + reasoning + generatio
 | Reasoning | Rule-based CoT scaffold with 8-type question classifier |
 | Agent Orchestration | `ThreadPoolExecutor` — parallel Phase 1 agents |
 | Memory | JSON-backed conversation history, persistent across sessions |
+| Live Market Data | `yfinance` — real-time stock, crypto, and index prices (no API key) |
+| Voice Mode | `pyttsx3` TTS (local) + `SpeechRecognition` STT (free) |
 | Hardware | CPU and CUDA (mixed precision via `torch.autocast`) |
 
 ---
@@ -113,12 +115,15 @@ flowchart TD
 <img src="docs/images/features.svg" alt="Feature Overview" width="100%"/>
 
 - **4-agent parallel reasoning** — Knowledge and Calculation agents run simultaneously with zero sequential bottleneck
+- **Live market data** — real-time stock prices, crypto, and indices via `yfinance` (no API key required)
+- **Live data fetcher** — `/fetch` command pulls live market data and auto-generates training CSVs
+- **Portfolio tracker** — track your holdings locally with live P&L and % gain/loss per position
+- **Voice mode** — `/audio` for full hands-free operation: speak your question, hear the answer
 - **Live financial math** — automatically detects and computes Sharpe Ratio, ROI, Compound Interest, Present Value, and EV/EBITDA directly from your query
 - **Chain-of-thought trained** — every answer in the training data follows `Step 1 → Step 2 → Therefore` format, so the model reasons, not just recalls
-- **31 finance domains** — from quantitative finance and derivatives to ESG, startup funding, and financial crises
+- **32 finance domains** — from quantitative finance and derivatives to ESG, startup funding, and financial crises
 - **1,200+ curated Q&A pairs** — hand-structured with step-by-step reasoning throughout
 - **Persistent conversation memory** — history is saved to JSON and reloaded automatically on next session
-- **Fully offline** — zero API calls, zero internet required after install
 - **GPU + CPU support** — mixed precision (`torch.autocast`) on CUDA; graceful CPU fallback
 - **Extensible by design** — add a new CSV, retrain, done. The tokenizer and KB update automatically
 
@@ -157,7 +162,13 @@ matplotlib>=3.7.0
 pandas>=2.0.0
 tqdm>=4.65.0
 colorama>=0.4.6
+yfinance>=0.2.0       # live stock/crypto/index data
+pyttsx3>=2.90         # local text-to-speech (voice mode)
+SpeechRecognition>=3.10.0  # speech-to-text (voice mode)
+pyaudio>=0.2.13       # microphone input (voice mode)
 ```
+
+> **Windows note:** if `pyaudio` fails to install, run: `pip install pipwin && pipwin install pyaudio`
 
 ---
 
@@ -166,16 +177,16 @@ colorama>=0.4.6
 ### Training
 
 ```bash
-# Train on all 31 CSV datasets (recommended)
+# Train on all 32 CSV datasets (recommended)
 python main.py /train
 
-# Train on a single topic (fast iteration / testing)
+# Train on a single topic (fast iteration / fine-tuning)
 python main.py /train data/quantitative_finance.csv
 ```
 
 On first run, `/train` will:
 1. Build the BPE tokenizer vocabulary from all finance text
-2. Train the transformer for up to 15 epochs with cosine LR and early stopping
+2. Train the transformer for up to 25 epochs with cosine LR and early stopping
 3. Save model weights and tokenizer to `checkpoints/`
 4. Export four training plots to `training_plots/`
 
@@ -192,14 +203,56 @@ On first run, `/train` will:
 python main.py /chat
 ```
 
-On startup, all agents initialise and report their status:
+### Voice Mode
 
+```bash
+python main.py /audio
 ```
-  [1/5] Tokenizer …           ✓  (12,847 tokens)
-  [2/5] Model …               ✓  (10.2M params · device=cuda)
-  [3/5] Knowledge base …      ✓  (1,266 Q&A pairs indexed)
-  [4/5] Reasoning engine …    ✓  (8 question types)
-  [5/5] Spawning 4 agents …   ✓  [Knowledge | Calculation | Reasoning | Model]
+
+Speak your question — the model answers and reads the response aloud. Say `exit` to quit.
+
+### Live Stock Lookup
+
+```bash
+# From the terminal
+python main.py /stock AAPL
+python main.py /stock TSLA
+
+# Inside /chat — also auto-detects stock queries like "how is NVDA doing?"
+/stock NVDA
+```
+
+### Live Data Fetcher
+
+Pulls real-time market data and generates Q&A training CSVs automatically:
+
+```bash
+python main.py /fetch stocks    # top 20 S&P stocks
+python main.py /fetch crypto    # top 10 cryptocurrencies
+python main.py /fetch market    # major indices (S&P, Dow, NASDAQ, VIX)
+python main.py /fetch sectors   # all 11 sector ETFs
+python main.py /fetch all       # everything above
+
+# Then fine-tune on the fresh data:
+python main.py /train data/fetched_stocks_20260317.csv
+```
+
+### Portfolio Tracker
+
+```bash
+# Add holdings
+python main.py /portfolio add AAPL 10 150.00
+python main.py /portfolio add TSLA 5 200.00
+
+# View live P&L
+python main.py /portfolio show
+
+# Remove a holding
+python main.py /portfolio remove AAPL
+
+# Also available inside /chat:
+/portfolio
+/portfolio add NVDA 3 500.00
 ```
 
 ### Chat Commands
@@ -211,6 +264,10 @@ On startup, all agents initialise and report their status:
 | `/reset` | Clear current session memory |
 | `/clear` | Clear the terminal and redraw the welcome screen |
 | `/info` | Show model stats: vocab size, parameter count, val loss, perplexity |
+| `/stock TICKER` | Live stock price and mini analysis |
+| `/portfolio` | Show portfolio with live P&L |
+| `/portfolio add T N P` | Add a holding (ticker, shares, buy price) |
+| `/portfolio remove T` | Remove a holding |
 | `/help` | List all available commands |
 | `exit` | Quit |
 
@@ -412,7 +469,7 @@ The BPE tokenizer automatically extends its vocabulary to cover new terminology.
 ```
 financegpt/
 │
-├── main.py                   # Entry point — /train /chat /info
+├── main.py                   # Entry point — all commands
 ├── config.py                 # All hyperparameters and file paths
 ├── model.py                  # FinanceGPT transformer (RoPE · RMSNorm · SwiGLU)
 ├── tokenizer.py              # BPE tokenizer — built from scratch
@@ -425,7 +482,12 @@ financegpt/
 ├── conversation_memory.py    # JSON-backed persistent conversation history
 ├── chat.py                   # Multi-agent chat interface
 │
-├── data/                     # 31 CSV files — question,answer format
+├── stock_tools.py            # Live stock/crypto/index lookup via yfinance
+├── fetcher.py                # /fetch — pulls live data → generates training CSVs
+├── portfolio.py              # Local portfolio tracker with live P&L
+├── audio_mode.py             # /audio — voice mode (STT + TTS)
+│
+├── data/                     # 32 CSV files — question,answer format
 │   ├── finance_fundamentals.csv
 │   ├── stock_market.csv
 │   ├── investment_strategies.csv
@@ -456,11 +518,14 @@ financegpt/
 │   ├── esg_sustainable_finance.csv
 │   ├── fintech_blockchain.csv
 │   ├── private_equity.csv
-│   └── quantitative_finance.csv
+│   ├── quantitative_finance.csv
+│   └── conversation.csv          # casual conversation + greetings
 │
 ├── checkpoints/              # gitignored — created after /train
 │   ├── finance_gpt.pt        # Model weights
-│   └── tokenizer.json        # BPE vocab + merges
+│   ├── tokenizer.json        # BPE vocab + merges
+│   ├── portfolio.json        # Local portfolio holdings
+│   └── conversation_history.json  # Persistent chat memory
 │
 ├── training_plots/           # gitignored — PNG charts from each training run
 ├── docs/images/              # README images (banner, demo GIF, screenshots)

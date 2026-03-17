@@ -105,13 +105,17 @@ def _make_banner(epochs_done: int = 0, best_ppl: float | None = None,
 
 HELP_TEXT = f"""
 {Fore.YELLOW}  Commands:{Style.RESET_ALL}
-  {Fore.CYAN}/help{Style.RESET_ALL}      show this message
-  {Fore.CYAN}/agents{Style.RESET_ALL}    per-agent breakdown for last query
-  {Fore.CYAN}/history{Style.RESET_ALL}   show recent conversation history
-  {Fore.CYAN}/reset{Style.RESET_ALL}     clear session memory
-  {Fore.CYAN}/clear{Style.RESET_ALL}     clear screen & restart view
-  {Fore.CYAN}/info{Style.RESET_ALL}      model & knowledge base stats
-  {Fore.CYAN}exit{Style.RESET_ALL}       quit
+  {Fore.CYAN}/help{Style.RESET_ALL}               show this message
+  {Fore.CYAN}/agents{Style.RESET_ALL}             per-agent breakdown for last query
+  {Fore.CYAN}/history{Style.RESET_ALL}            show recent conversation history
+  {Fore.CYAN}/reset{Style.RESET_ALL}              clear session memory
+  {Fore.CYAN}/clear{Style.RESET_ALL}              clear screen & restart view
+  {Fore.CYAN}/info{Style.RESET_ALL}               model & knowledge base stats
+  {Fore.CYAN}/stock TICKER{Style.RESET_ALL}       live stock price & mini analysis
+  {Fore.CYAN}/portfolio{Style.RESET_ALL}          show portfolio with live P&L
+  {Fore.CYAN}/portfolio add T N P{Style.RESET_ALL} add holding (ticker shares buy_price)
+  {Fore.CYAN}/portfolio remove T{Style.RESET_ALL} remove holding
+  {Fore.CYAN}exit{Style.RESET_ALL}               quit
 """
 
 _DIVIDER = Fore.WHITE + Style.DIM + "─" * (_W + 2) + Style.RESET_ALL
@@ -267,6 +271,19 @@ def chat_interface():
 
         cmd = user_in.lower().strip()
 
+        # ── Time / Date quick answer ─────────────────────────────────
+        if any(p in cmd for p in ("what time", "what's the time", "whats the time",
+                                   "current time", "what date", "what's the date",
+                                   "whats the date", "today's date", "todays date",
+                                   "what day", "what year", "what month")):
+            from datetime import datetime
+            now = datetime.now()
+            msg = f"It's {now.strftime('%A, %B %d, %Y')} — {now.strftime('%I:%M %p')}."
+            print(f"\n{Fore.GREEN}  FinanceGPT ►{Style.RESET_ALL}")
+            print(f"  {msg}\n")
+            memory.add_turn(user_in, msg)
+            continue
+
         # ── Commands ────────────────────────────────────────────────
         if cmd in ("exit", "quit", "bye", "/exit", "/quit"):
             print(_DIVIDER)
@@ -312,13 +329,57 @@ def chat_interface():
             print()
             continue
 
+        # ── /stock TICKER ────────────────────────────────────────────
+        if cmd.startswith("/stock"):
+            parts = user_in.split()
+            if len(parts) < 2:
+                print(f"\n{Fore.YELLOW}  Usage: /stock TICKER{Style.RESET_ALL}\n")
+            else:
+                from stock_tools import get_stock_info, format_stock_summary
+                ticker = parts[1].upper()
+                print(f"\n{Fore.CYAN}  ⟳ Fetching {ticker}…{Style.RESET_ALL}", end="", flush=True)
+                data = get_stock_info(ticker)
+                print(f"\r{' ' * 30}\r", end="")
+                print(f"\n{Fore.GREEN}  FinanceGPT ►{Style.RESET_ALL}")
+                print(_wrap(format_stock_summary(data)))
+                print()
+            continue
+
+        # ── /portfolio ───────────────────────────────────────────────
+        if cmd.startswith("/portfolio"):
+            from portfolio import portfolio_cli, show_portfolio
+            parts = user_in.split()
+            if len(parts) == 1:
+                print(show_portfolio())
+            else:
+                portfolio_cli(parts[1:])
+            print()
+            continue
+
         # ── Multi-agent query ───────────────────────────────────────
+
+        # Auto-detect stock queries and inject live data as context prefix
+        live_prefix = ""
+        try:
+            from stock_tools import detect_ticker, get_stock_info, format_stock_summary
+            ticker = detect_ticker(user_in)
+            if ticker:
+                data = get_stock_info(ticker)
+                if "error" not in data:
+                    live_prefix = f"[Live data] {format_stock_summary(data)}\n\n"
+        except Exception:
+            pass
+
         print(f"\n{Fore.CYAN}  ⟳  Agents thinking…{Style.RESET_ALL}", end="", flush=True)
         t_start = time.perf_counter()
 
         try:
             history_ctx = memory.get_context(n_turns=5)
-            response, agent_info = orchestrator.process(user_in, history_ctx)
+            query_with_context = live_prefix + user_in if live_prefix else user_in
+            response, agent_info = orchestrator.process(query_with_context, history_ctx)
+            # Prepend live data to response if fetched
+            if live_prefix:
+                response = live_prefix.strip() + "\n\n" + response
             elapsed = time.perf_counter() - t_start
             last_agent_info = agent_info
 
