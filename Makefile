@@ -8,7 +8,7 @@ SRCS    := $(wildcard $(SRCDIR)/*.c)
 OBJS    := $(SRCS:.c=.o)
 
 # ── Base flags ──────────────────────────────────────────────────────
-CFLAGS  := -O3 -march=native -std=c11 -Wall -Wextra -Wno-unused-parameter
+CFLAGS  := -O3 -march=native -std=c11 -Wall -Wextra -Wno-unused-parameter -Wno-unused-result
 CFLAGS  += -I$(SRCDIR)
 LDFLAGS :=
 LDLIBS  := -lm
