@@ -14,6 +14,7 @@
 #include <io.h>
 #else
 #include <dirent.h>
+#include <sys/stat.h>
 #endif
 
 /* ── Dataset ─────────────────────────────────────────────────────── */
@@ -52,6 +53,7 @@ TrainHistory* history_create(void) {
     h->cap_steps  = 1024;
     h->losses     = (float*)xmalloc(h->cap_steps * sizeof(float));
     h->lrs        = (float*)xmalloc(h->cap_steps * sizeof(float));
+    h->grad_norms = (float*)xmalloc(h->cap_steps * sizeof(float));
     h->steps      = (int*)xmalloc(h->cap_steps * sizeof(int));
     h->cap_epochs = 64;
     h->val_epochs = (EpochRecord*)xmalloc(h->cap_epochs * sizeof(EpochRecord));
@@ -60,20 +62,22 @@ TrainHistory* history_create(void) {
 
 void history_free(TrainHistory* h) {
     if (!h) return;
-    free(h->losses); free(h->lrs); free(h->steps); free(h->val_epochs);
+    free(h->losses); free(h->lrs); free(h->grad_norms); free(h->steps); free(h->val_epochs);
     free(h);
 }
 
-void history_add_step(TrainHistory* h, int step, float loss, float lr) {
+void history_add_step(TrainHistory* h, int step, float loss, float lr, float gnorm) {
     if (h->n_steps >= h->cap_steps) {
         h->cap_steps *= 2;
-        h->losses = (float*)xrealloc(h->losses, h->cap_steps * sizeof(float));
-        h->lrs    = (float*)xrealloc(h->lrs,    h->cap_steps * sizeof(float));
-        h->steps  = (int*)xrealloc(h->steps,    h->cap_steps * sizeof(int));
+        h->losses     = (float*)xrealloc(h->losses,     h->cap_steps * sizeof(float));
+        h->lrs        = (float*)xrealloc(h->lrs,        h->cap_steps * sizeof(float));
+        h->grad_norms = (float*)xrealloc(h->grad_norms, h->cap_steps * sizeof(float));
+        h->steps      = (int*)xrealloc(h->steps,        h->cap_steps * sizeof(int));
     }
-    h->losses[h->n_steps] = loss;
-    h->lrs[h->n_steps]    = lr;
-    h->steps[h->n_steps]  = step;
+    h->losses[h->n_steps]     = loss;
+    h->lrs[h->n_steps]        = lr;
+    h->grad_norms[h->n_steps] = gnorm;
+    h->steps[h->n_steps]      = step;
     h->n_steps++;
 }
 
@@ -220,9 +224,23 @@ void optimizer_zero_grad(Model* m) {
 }
 
 float lr_schedule(int step, int total_steps, float lr, float min_lr, int warmup) {
+    (void)total_steps;
+    /* Linear warmup */
     if (step < warmup)
         return lr * (float)step / (float)(warmup > 0 ? warmup : 1);
-    float p = (float)(step - warmup) / (float)(total_steps - warmup > 0 ? total_steps - warmup : 1);
+    /* SGDR: Cosine Annealing with Warm Restarts */
+    int s = step - warmup;
+    int t0 = TRAIN_LR_RESTART_STEPS;
+    /* Find current cycle: cycle lengths grow by TRAIN_LR_RESTART_MULT */
+    int cycle_len = t0;
+    int cycle_start = 0;
+    while (cycle_start + cycle_len <= s) {
+        cycle_start += cycle_len;
+        cycle_len = (int)(cycle_len * TRAIN_LR_RESTART_MULT);
+        if (cycle_len < 1) cycle_len = 1;
+    }
+    float p = (float)(s - cycle_start) / (float)cycle_len;
+    if (p > 1.0f) p = 1.0f;
     return min_lr + (lr - min_lr) * 0.5f * (1.0f + cosf(3.14159265f * p));
 }
 
@@ -366,6 +384,247 @@ static void print_bar(int cur, int total, const char* suffix) {
     for (int i = 0; i < W; i++) printf(i < filled ? "\xe2\x96\x88" : "\xe2\x96\x91");
     printf("] %3d%%  %s", total > 0 ? (int)((long long)cur * 100 / total) : 0, suffix);
     fflush(stdout);
+}
+
+/* ── SVG plot generation ─────────────────────────────────────────── */
+/* Write a minimal inline SVG line chart to a file.
+   xs/ys: n data points, title/xlabel/ylabel: labels */
+static void write_svg(const char* path,
+                      const float* xs, const float* ys, int n,
+                      const float* ys2,        /* optional second series (NULL = none) */
+                      const char* title,
+                      const char* xlabel, const char* ylabel,
+                      const char* legend1, const char* legend2) {
+    if (n <= 0) return;
+    FILE* f = fopen(path, "w");
+    if (!f) { fprintf(stderr, "  [plot] cannot open %s\n", path); return; }
+
+    /* Find data bounds */
+    float xmin = xs[0], xmax = xs[0];
+    float ymin = ys[0], ymax = ys[0];
+    for (int i = 1; i < n; i++) {
+        if (xs[i] < xmin) xmin = xs[i];
+        if (xs[i] > xmax) xmax = xs[i];
+        if (ys[i] < ymin) ymin = ys[i];
+        if (ys[i] > ymax) ymax = ys[i];
+    }
+    if (ys2) {
+        for (int i = 0; i < n; i++) {
+            if (ys2[i] < ymin) ymin = ys2[i];
+            if (ys2[i] > ymax) ymax = ys2[i];
+        }
+    }
+    float xrange = xmax - xmin; if (xrange < 1e-9f) xrange = 1.0f;
+    float yrange = ymax - ymin; if (yrange < 1e-9f) yrange = 1.0f;
+
+    /* SVG canvas */
+    int W = 900, H = 520;
+    int ml = 80, mr = 30, mt = 50, mb = 60;
+    int pw = W - ml - mr, ph = H - mt - mb;
+
+    fprintf(f, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+    fprintf(f, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"%d\" height=\"%d\">\n", W, H);
+    fprintf(f, "<rect width=\"%d\" height=\"%d\" fill=\"#1e1e2e\"/>\n", W, H);
+    /* Chart area background */
+    fprintf(f, "<rect x=\"%d\" y=\"%d\" width=\"%d\" height=\"%d\" fill=\"#13131f\" stroke=\"#444\" stroke-width=\"1\"/>\n", ml, mt, pw, ph);
+
+    /* Grid lines (5 horizontal) */
+    for (int gi = 0; gi <= 4; gi++) {
+        float gy = mt + ph * gi / 4.0f;
+        float val = ymax - yrange * gi / 4.0f;
+        fprintf(f, "<line x1=\"%d\" y1=\"%.1f\" x2=\"%d\" y2=\"%.1f\" stroke=\"#333\" stroke-width=\"1\" stroke-dasharray=\"4,4\"/>\n",
+                ml, gy, ml+pw, gy);
+        fprintf(f, "<text x=\"%d\" y=\"%.1f\" fill=\"#aaa\" font-size=\"11\" font-family=\"monospace\" text-anchor=\"end\">%.4g</text>\n",
+                ml-5, gy+4, val);
+    }
+    /* X axis ticks (5) */
+    for (int gi = 0; gi <= 4; gi++) {
+        float gx = ml + pw * gi / 4.0f;
+        float val = xmin + xrange * gi / 4.0f;
+        fprintf(f, "<line x1=\"%.1f\" y1=\"%d\" x2=\"%.1f\" y2=\"%d\" stroke=\"#555\" stroke-width=\"1\"/>\n",
+                gx, mt+ph, gx, mt+ph+5);
+        fprintf(f, "<text x=\"%.1f\" y=\"%d\" fill=\"#aaa\" font-size=\"11\" font-family=\"monospace\" text-anchor=\"middle\">%.0f</text>\n",
+                gx, mt+ph+18, val);
+    }
+
+    /* Build polyline for series 1 */
+    fprintf(f, "<polyline fill=\"none\" stroke=\"#7ec8e3\" stroke-width=\"2\" points=\"");
+    for (int i = 0; i < n; i++) {
+        float px2 = ml + (xs[i] - xmin) / xrange * pw;
+        float py2 = mt + ph - (ys[i] - ymin) / yrange * ph;
+        fprintf(f, "%.1f,%.1f ", px2, py2);
+    }
+    fprintf(f, "\"/>\n");
+
+    /* Series 2 (optional) */
+    if (ys2) {
+        fprintf(f, "<polyline fill=\"none\" stroke=\"#f28b82\" stroke-width=\"2\" stroke-dasharray=\"6,3\" points=\"");
+        for (int i = 0; i < n; i++) {
+            float px2 = ml + (xs[i] - xmin) / xrange * pw;
+            float py2 = mt + ph - (ys2[i] - ymin) / yrange * ph;
+            fprintf(f, "%.1f,%.1f ", px2, py2);
+        }
+        fprintf(f, "\"/>\n");
+    }
+
+    /* Title */
+    fprintf(f, "<text x=\"%d\" y=\"%d\" fill=\"#fff\" font-size=\"15\" font-family=\"sans-serif\" font-weight=\"bold\" text-anchor=\"middle\">%s</text>\n",
+            W/2, mt-18, title);
+    /* X label */
+    fprintf(f, "<text x=\"%d\" y=\"%d\" fill=\"#ccc\" font-size=\"12\" font-family=\"sans-serif\" text-anchor=\"middle\">%s</text>\n",
+            W/2, H-8, xlabel);
+    /* Y label (rotated) */
+    fprintf(f, "<text transform=\"rotate(-90)\" x=\"%d\" y=\"%d\" fill=\"#ccc\" font-size=\"12\" font-family=\"sans-serif\" text-anchor=\"middle\">%s</text>\n",
+            -(H/2), 16, ylabel);
+
+    /* Legend */
+    if (legend1) {
+        fprintf(f, "<rect x=\"%d\" y=\"%d\" width=\"12\" height=\"3\" fill=\"#7ec8e3\"/>\n", ml+10, mt+12);
+        fprintf(f, "<text x=\"%d\" y=\"%d\" fill=\"#ccc\" font-size=\"11\" font-family=\"sans-serif\">%s</text>\n", ml+26, mt+16, legend1);
+    }
+    if (ys2 && legend2) {
+        fprintf(f, "<rect x=\"%d\" y=\"%d\" width=\"12\" height=\"3\" fill=\"#f28b82\"/>\n", ml+120, mt+12);
+        fprintf(f, "<text x=\"%d\" y=\"%d\" fill=\"#ccc\" font-size=\"11\" font-family=\"sans-serif\">%s</text>\n", ml+136, mt+16, legend2);
+    }
+
+    fprintf(f, "</svg>\n");
+    fclose(f);
+    printf("  [plot] %s\n", path);
+}
+
+/* Compute smoothed array (exponential moving average, alpha=0.05) */
+static float* smooth_ema(const float* src, int n, float alpha) {
+    float* out = (float*)xmalloc(n * sizeof(float));
+    if (n == 0) return out;
+    out[0] = src[0];
+    for (int i = 1; i < n; i++)
+        out[i] = alpha * src[i] + (1.0f - alpha) * out[i-1];
+    return out;
+}
+
+/* Compute perplexity array from loss array */
+static float* loss_to_ppl(const float* losses, int n) {
+    float* out = (float*)xmalloc(n * sizeof(float));
+    for (int i = 0; i < n; i++)
+        out[i] = expf(losses[i] < 10.0f ? losses[i] : 10.0f);
+    return out;
+}
+
+/* Convert int steps to float steps for SVG */
+static float* steps_to_float(const int* steps, int n) {
+    float* out = (float*)xmalloc(n * sizeof(float));
+    for (int i = 0; i < n; i++) out[i] = (float)steps[i];
+    return out;
+}
+
+/* Convert epoch records to float arrays */
+static void epochs_to_arrays(const EpochRecord* recs, int n,
+                               float** out_steps, float** out_train, float** out_val,
+                               float** out_train_ppl, float** out_val_ppl) {
+    *out_steps     = (float*)xmalloc(n * sizeof(float));
+    *out_train     = (float*)xmalloc(n * sizeof(float));
+    *out_val       = (float*)xmalloc(n * sizeof(float));
+    *out_train_ppl = (float*)xmalloc(n * sizeof(float));
+    *out_val_ppl   = (float*)xmalloc(n * sizeof(float));
+    for (int i = 0; i < n; i++) {
+        (*out_steps)[i]     = (float)recs[i].step;
+        (*out_train)[i]     = recs[i].train_loss;
+        (*out_val)[i]       = recs[i].val_loss;
+        (*out_train_ppl)[i] = recs[i].train_ppl;
+        (*out_val_ppl)[i]   = recs[i].val_ppl;
+    }
+}
+
+void generate_plots(const TrainHistory* h, const char* plots_dir) {
+    if (!h || h->n_steps == 0) return;
+    int n = h->n_steps;
+    int ne = h->n_epochs;
+
+    /* Make sure plots_dir exists */
+#ifdef PLATFORM_WINDOWS
+    CreateDirectoryA(plots_dir, NULL);
+#else
+    mkdir(plots_dir, 0755);
+#endif
+
+    char path[512];
+    float* xf = steps_to_float(h->steps, n);
+    float* ppl = loss_to_ppl(h->losses, n);
+    float* smooth = smooth_ema(h->losses, n, 0.05f);
+    float* smooth_ppl = loss_to_ppl(smooth, n);
+
+    /* Plot 1: Raw training loss */
+    snprintf(path, sizeof(path), "%s/01_training_loss.svg", plots_dir);
+    write_svg(path, xf, h->losses, n, smooth, "Training Loss", "Step", "Loss", "Raw Loss", "Smoothed");
+
+    /* Plot 2: Perplexity */
+    snprintf(path, sizeof(path), "%s/02_perplexity.svg", plots_dir);
+    write_svg(path, xf, ppl, n, smooth_ppl, "Training Perplexity", "Step", "Perplexity", "Raw PPL", "Smoothed");
+
+    /* Plot 3: Learning rate schedule */
+    snprintf(path, sizeof(path), "%s/03_learning_rate.svg", plots_dir);
+    write_svg(path, xf, h->lrs, n, NULL, "Learning Rate Schedule (SGDR)", "Step", "LR", "LR", NULL);
+
+    /* Plot 4: Gradient norms */
+    snprintf(path, sizeof(path), "%s/04_grad_norms.svg", plots_dir);
+    write_svg(path, xf, h->grad_norms, n, NULL, "Gradient Norms", "Step", "Grad Norm", "\xe2\x80\x96\xe2\x88\x87\xe2\x80\x96", NULL);
+
+    /* Epoch-level plots */
+    if (ne > 0) {
+        float *ep_steps, *ep_train, *ep_val, *ep_train_ppl, *ep_val_ppl;
+        epochs_to_arrays(h->val_epochs, ne, &ep_steps, &ep_train, &ep_val, &ep_train_ppl, &ep_val_ppl);
+
+        /* Plot 5: Train vs Val Loss per epoch */
+        snprintf(path, sizeof(path), "%s/05_train_vs_val_loss.svg", plots_dir);
+        write_svg(path, ep_steps, ep_train, ne, ep_val, "Train vs Validation Loss", "Step", "Loss", "Train Loss", "Val Loss");
+
+        /* Plot 6: Train vs Val Perplexity per epoch */
+        snprintf(path, sizeof(path), "%s/06_train_vs_val_ppl.svg", plots_dir);
+        write_svg(path, ep_steps, ep_train_ppl, ne, ep_val_ppl, "Train vs Validation Perplexity", "Step", "Perplexity", "Train PPL", "Val PPL");
+
+        /* Plot 7: Generalization gap (val - train loss) per epoch */
+        float* gap = (float*)xmalloc(ne * sizeof(float));
+        for (int i = 0; i < ne; i++) gap[i] = ep_val[i] - ep_train[i];
+        snprintf(path, sizeof(path), "%s/07_generalization_gap.svg", plots_dir);
+        write_svg(path, ep_steps, gap, ne, NULL, "Generalization Gap (Val - Train Loss)", "Step", "Gap", "Val - Train", NULL);
+        free(gap);
+
+        /* Plot 8: Val loss only (larger view) */
+        snprintf(path, sizeof(path), "%s/08_val_loss.svg", plots_dir);
+        write_svg(path, ep_steps, ep_val, ne, NULL, "Validation Loss", "Step", "Loss", "Val Loss", NULL);
+
+        free(ep_steps); free(ep_train); free(ep_val); free(ep_train_ppl); free(ep_val_ppl);
+    }
+
+    /* Plot 9: Smoothed loss only */
+    snprintf(path, sizeof(path), "%s/09_smoothed_loss.svg", plots_dir);
+    write_svg(path, xf, smooth, n, NULL, "Smoothed Training Loss (EMA alpha=0.05)", "Step", "Loss", "EMA Loss", NULL);
+
+    /* Plot 10: Loss histogram (distribution of per-step losses) */
+    {
+        /* Build histogram with 50 bins */
+        float lmin = h->losses[0], lmax = h->losses[0];
+        for (int i = 1; i < n; i++) {
+            if (h->losses[i] < lmin) lmin = h->losses[i];
+            if (h->losses[i] > lmax) lmax = h->losses[i];
+        }
+        int nbins = 50;
+        float* bin_x = (float*)xcalloc(nbins, sizeof(float));
+        float* bin_y = (float*)xcalloc(nbins, sizeof(float));
+        float brange = lmax - lmin; if (brange < 1e-9f) brange = 1.0f;
+        for (int i = 0; i < nbins; i++) bin_x[i] = lmin + brange * (i + 0.5f) / nbins;
+        for (int i = 0; i < n; i++) {
+            int b = (int)((h->losses[i] - lmin) / brange * nbins);
+            if (b < 0) b = 0; if (b >= nbins) b = nbins - 1;
+            bin_y[b] += 1.0f;
+        }
+        snprintf(path, sizeof(path), "%s/10_loss_histogram.svg", plots_dir);
+        write_svg(path, bin_x, bin_y, nbins, NULL, "Loss Distribution Histogram", "Loss Value", "Count", "Frequency", NULL);
+        free(bin_x); free(bin_y);
+    }
+
+    free(xf); free(ppl); free(smooth); free(smooth_ppl);
+    printf("  [plots] 10 SVG training plots saved to %s/\n", plots_dir);
 }
 
 /* ── Main train function ─────────────────────────────────────────── */
@@ -512,7 +771,7 @@ void train(const char* csv_file) {
             ep_steps++;
             global_step++;
             cur_lr = lr_schedule(global_step, total_steps, TRAIN_LR, TRAIN_MIN_LR, TRAIN_WARMUP_STEPS);
-            history_add_step(hist, global_step, loss, cur_lr);
+            history_add_step(hist, global_step, loss, cur_lr, 0.0f);
 
             /* Optimizer step every TRAIN_GRAD_ACCUM samples */
             if ((si + 1) % TRAIN_GRAD_ACCUM == 0 || si == n_train - 1) {
@@ -575,6 +834,8 @@ void train(const char* csv_file) {
     printf("  Best val loss: %.4f\n", best_val);
     printf("  Checkpoint: %s\n", CHECKPOINT_PATH);
     printf("%s\n\n", sep_line);
+
+    generate_plots(hist, PLOTS_DIR);
 
     free(x_buf); free(y_buf); free(order);
     activations_free(acts, &m->cfg);

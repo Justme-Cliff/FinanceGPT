@@ -24,6 +24,8 @@
 #define TRAIN_VAL_SPLIT      0.10f
 #define TRAIN_BLOCK_SIZE     512
 #define TRAIN_PATIENCE       3
+#define TRAIN_LR_RESTART_STEPS   200
+#define TRAIN_LR_RESTART_MULT    2.0f
 
 /* ── Generation ─────────────────────────────────────────────────── */
 #define GEN_TEMPERATURE      0.80f

@@ -155,6 +155,54 @@ void tok_free(Tokenizer* t) {
     free(t);
 }
 
+/* ── Finance atomic terms ─────────────────────────────────────────
+ * These multi-character tokens (incl. digits/symbols) must never be
+ * split by the pre-tokenizer — they are single semantic units.
+ * All entries are already lowercase.
+ * ─────────────────────────────────────────────────────────────────── */
+static const char* FINANCE_ATOMS[] = {
+    /* Ratios and metrics */
+    "ebitda", "ebit", "ebitdac", "cagr", "wacc", "capm", "roe", "roa", "roce",
+    "eps", "bvps", "fcf", "ocf", "dcf", "ltv", "ltm", "ntm",
+    /* Indices / instruments */
+    "etf", "reit", "spac", "cdo", "cds", "clo", "mbs", "abs", "cmbs",
+    "ipo", "apo", "spo", "dpo",
+    /* Rates and benchmarks */
+    "libor", "sofr", "shibor", "euribor", "ffr",
+    /* Terminology */
+    "sharpe", "sortino", "treynor", "calmar", "omega",
+    "p/e", "p/b", "p/s", "p/fcf", "ev/ebitda", "ev/ebit", "ev/sales",
+    /* Account / plan codes */
+    "401k", "403b", "457b", "ira", "roth", "hsa", "fsa",
+    /* Crypto */
+    "defi", "nft", "dao", "dex", "cex", "amm", "tvl",
+    /* ESG */
+    "esg", "sri", "unpri",
+    /* Other */
+    "gdp", "cpi", "ppi", "pce", "ism", "pmi", "nfp",
+    NULL
+};
+
+static int finance_atom_len(const char* p) {
+    /* Returns length of matching finance atom at p (lowercase), or 0 if none */
+    for (int i = 0; FINANCE_ATOMS[i] != NULL; i++) {
+        const char* atom = FINANCE_ATOMS[i];
+        size_t alen = strlen(atom);
+        /* Case-insensitive prefix match */
+        int match = 1;
+        for (size_t k = 0; k < alen; k++) {
+            if (!p[k]) { match = 0; break; }
+            if (tolower((unsigned char)p[k]) != (unsigned char)atom[k]) { match = 0; break; }
+        }
+        if (!match) continue;
+        /* Ensure no alphanumeric char follows (word boundary) */
+        char next = p[alen];
+        if (next && (isalnum((unsigned char)next) || next == '_')) continue;
+        return (int)alen;
+    }
+    return 0;
+}
+
 /* ── Pre-tokenizer ───────────────────────────────────────────────────
  *
  * Mirrors the Python regex-based pre-tokenizer in tokenizer.py.
@@ -210,14 +258,52 @@ static char** pre_tokenize(const char* text, int* out_n) {
                 p++;
             }
             if (*p == '%') { if (len < sizeof(buf) - 2) buf[len++] = '%'; p++; }
+            /* Check if digits + following alpha chars form a finance atom (e.g. 401k) */
+            else if (isalpha((unsigned char)*p)) {
+                /* Temporarily null-terminate buf to test */
+                buf[len] = '\0';
+                /* Build candidate: buf + upcoming alpha */
+                char candidate[256];
+                size_t clen = len;
+                strncpy(candidate, buf, clen);
+                const char* pp = p;
+                while (*pp && isalpha((unsigned char)*pp) && clen < sizeof(candidate)-2) {
+                    candidate[clen++] = (char)tolower((unsigned char)*pp);
+                    pp++;
+                }
+                candidate[clen] = '\0';
+                /* Check if this candidate is a finance atom */
+                int is_atom = 0;
+                for (int i = 0; FINANCE_ATOMS[i] != NULL; i++) {
+                    if (strcmp(candidate, FINANCE_ATOMS[i]) == 0) { is_atom = 1; break; }
+                }
+                if (is_atom) {
+                    /* Append the alpha suffix */
+                    while (p != pp) {
+                        if (len < sizeof(buf) - 2)
+                            buf[len++] = (char)tolower((unsigned char)*p);
+                        p++;
+                    }
+                }
+                /* else: leave p pointing to alpha, normal alpha block will handle it */
+            }
         }
         /* ── Alphabetic word (finance chars: apostrophe, hyphen, /) ─ */
         else if (isalpha((unsigned char)*p)) {
-            while (*p && (isalpha((unsigned char)*p) ||
-                          *p == '\'' || *p == '-'    || *p == '/')) {
-                if (len < sizeof(buf) - 2)
-                    buf[len++] = (char)tolower((unsigned char)*p);
-                p++;
+            /* Check if this is a finance atom first */
+            int atom_len = finance_atom_len(p);
+            if (atom_len > 0) {
+                /* Copy atom as-is (lowercased) */
+                for (int k = 0; k < atom_len && len < (int)(sizeof(buf) - 2); k++)
+                    buf[len++] = (char)tolower((unsigned char)p[k]);
+                p += atom_len;
+            } else {
+                while (*p && (isalpha((unsigned char)*p) ||
+                              *p == '\'' || *p == '-'    || *p == '/')) {
+                    if (len < sizeof(buf) - 2)
+                        buf[len++] = (char)tolower((unsigned char)*p);
+                    p++;
+                }
             }
         }
         /* ── Single non-space character ───────────────────────────── */

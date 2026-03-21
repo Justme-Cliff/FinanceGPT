@@ -31,6 +31,7 @@ typedef struct {
 typedef struct {
     float*       losses;      /* per step */
     float*       lrs;         /* per step */
+    float*       grad_norms;  /* per step */
     int*         steps;
     int          n_steps;
     int          cap_steps;
@@ -41,7 +42,7 @@ typedef struct {
 
 TrainHistory* history_create(void);
 void          history_free  (TrainHistory* h);
-void          history_add_step(TrainHistory* h, int step, float loss, float lr);
+void          history_add_step(TrainHistory* h, int step, float loss, float lr, float gnorm);
 void          history_add_epoch(TrainHistory* h, EpochRecord rec);
 
 /* ── AdamW optimizer ────────────────────────────────────────────── */
@@ -50,8 +51,11 @@ void optimizer_step     (Model* m, float lr, float beta1, float beta2,
                          float eps, float weight_decay, int step);
 void optimizer_zero_grad(Model* m);
 
-/* ── Learning rate schedule (cosine with warmup) ───────────────── */
+/* ── Learning rate schedule (SGDR: cosine annealing with warm restarts) */
 float lr_schedule(int step, int total_steps, float lr, float min_lr, int warmup);
+
+/* ── SVG plot generation ────────────────────────────────────────── */
+void generate_plots(const TrainHistory* h, const char* plots_dir);
 
 /* ── Training entry point ───────────────────────────────────────── */
 /* csv_file: NULL = train on all CSVs, else path to one CSV */

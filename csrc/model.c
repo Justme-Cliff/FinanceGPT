@@ -533,8 +533,7 @@ void model_forward(Model* m, const int* ids, int T, float* logits)
         /* up_pre   = xn @ ffn_up^T     [T, df] */
         matmul_t_f32(xn, b->ffn_up,   up,   T, dm, df);
         /* act = silu(gate) * up */
-        silu_f32(act, gate, T * df);
-        vec_mul_f32(act, act, up, T * df);
+        silu_mul_f32(act, gate, up, T * df);
         /* down = act @ ffn_down^T   [T, dm] */
         matmul_t_f32(act, b->ffn_down, tmp, T, df, dm);
 
@@ -725,8 +724,7 @@ float model_train_step(Model* m, const int* x_ids, const int* y_ids, int T,
         memcpy(acts->ffn_up_x[l],   up_pre,   (size_t)T * df * sizeof(float));
 
         /* act = silu(gate) * up */
-        silu_f32(act_fwd, gate_pre, T * df);
-        vec_mul_f32(act_fwd, act_fwd, up_pre, T * df);
+        silu_mul_f32(act_fwd, gate_pre, up_pre, T * df);
 
         /* Down projection → residual into xo */
         matmul_t_f32(act_fwd, b->ffn_down, tmp_dm, T, df, dm);
@@ -1200,8 +1198,7 @@ void model_forward_one(Model* m, int token_id, int pos, KVCache* cache, float* l
         /* SwiGLU FFN (M=1) */
         matmul_t_f32(xn, b->ffn_gate, gate, 1, dm, df);
         matmul_t_f32(xn, b->ffn_up,   up,   1, dm, df);
-        silu_f32(act, gate, df);
-        vec_mul_f32(act, act, up, df);
+        silu_mul_f32(act, gate, up, df);
         matmul_t_f32(act, b->ffn_down, tmp, 1, df, dm);
 
         /* Residual add */

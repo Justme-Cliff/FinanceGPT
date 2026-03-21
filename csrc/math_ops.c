@@ -196,6 +196,13 @@ void silu_bwd_f32(float* dxout, const float* x, const float* dout, int n) {
         dxout[i] = dout[i] * sig * (1.0f + x[i] * (1.0f - sig));
     }
 }
+void silu_mul_f32(float* dst, const float* gate, const float* up, int n) {
+    for (int i = 0; i < n; i++) {
+        float g = gate[i];
+        float sig = 1.0f / (1.0f + fast_exp(-g));
+        dst[i] = g * sig * up[i];
+    }
+}
 void gelu_f32(float* dst, const float* src, int n) {
     const float c = 0.7978845608f; /* sqrt(2/pi) */
     for (int i = 0; i < n; i++) {

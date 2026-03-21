@@ -30,6 +30,8 @@ float vec_max_f32  (const float* a, int n);
 /* ── Activations ────────────────────────────────────────────────── */
 void silu_f32      (float* dst, const float* src, int n);  /* x * sigmoid(x) */
 void silu_bwd_f32  (float* dxout, const float* x, const float* dout, int n);
+/* Fused SwiGLU: dst[i] = gate[i] * sigmoid(gate[i]) * up[i]  (one pass) */
+void silu_mul_f32  (float* dst, const float* gate, const float* up, int n);
 void gelu_f32      (float* dst, const float* src, int n);
 
 /* ── Normalization ──────────────────────────────────────────────── */
