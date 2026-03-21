@@ -358,6 +358,16 @@ float evaluate(Model* m, Tokenizer* tok, Dataset* val_ds,
     return count > 0 ? total_loss / count : 0.0f;
 }
 
+/* ── Progress bar ────────────────────────────────────────────────── */
+static void print_bar(int cur, int total, const char* suffix) {
+    const int W = 36;
+    int filled = (total > 0) ? (int)((long long)cur * W / total) : 0;
+    printf("\r  [");
+    for (int i = 0; i < W; i++) printf(i < filled ? "\xe2\x96\x88" : "\xe2\x96\x91");
+    printf("] %3d%%  %s", total > 0 ? (int)((long long)cur * 100 / total) : 0, suffix);
+    fflush(stdout);
+}
+
 /* ── Main train function ─────────────────────────────────────────── */
 void train(const char* csv_file) {
     const char sep_line[] = "======================================================================";
@@ -410,8 +420,13 @@ void train(const char* csv_file) {
         total_tokens += len;
         free(ids);
         free(texts[i]);
+
+        char suf[64];
+        snprintf(suf, sizeof(suf), "%d/%d samples", i + 1, n_texts);
+        print_bar(i + 1, n_texts, suf);
     }
     free(texts);
+    printf("\n");
 
     printf("  Total tokens: %zu\n", total_tokens);
 
@@ -483,28 +498,37 @@ void train(const char* csv_file) {
 
         float ep_loss_sum = 0.0f;
         int   ep_steps    = 0;
+        float cur_lr      = TRAIN_LR;
+
+        optimizer_zero_grad(m);
 
         for (size_t si = 0; si < n_train; si++) {
             dataset_get(train_ds, order[si], x_buf, y_buf);
 
-            optimizer_zero_grad(m);
             float loss = model_train_step(m, x_buf, y_buf, block_size,
                                            1, TRAIN_LABEL_SMOOTH, acts);
-            float lr = lr_schedule(global_step, total_steps, TRAIN_LR, TRAIN_MIN_LR, TRAIN_WARMUP_STEPS);
-            optimizer_step(m, lr, ADAM_BETA1, ADAM_BETA2, ADAM_EPS, ADAM_WEIGHT_DECAY, global_step);
 
             ep_loss_sum += loss;
             ep_steps++;
             global_step++;
-            history_add_step(hist, global_step, loss, lr);
+            cur_lr = lr_schedule(global_step, total_steps, TRAIN_LR, TRAIN_MIN_LR, TRAIN_WARMUP_STEPS);
+            history_add_step(hist, global_step, loss, cur_lr);
 
-            /* Progress every 100 steps */
-            if (si % 100 == 0) {
+            /* Optimizer step every TRAIN_GRAD_ACCUM samples */
+            if ((si + 1) % TRAIN_GRAD_ACCUM == 0 || si == n_train - 1) {
+                optimizer_step(m, cur_lr, ADAM_BETA1, ADAM_BETA2, ADAM_EPS, ADAM_WEIGHT_DECAY, global_step);
+                optimizer_zero_grad(m);
+            }
+
+            /* Progress bar every 10 steps */
+            if (si % 10 == 0) {
                 float avg = ep_loss_sum / ep_steps;
-                printf("\r  Epoch %d/%d  step %zu/%zu  loss=%.4f  ppl=%.1f  lr=%.2e",
-                       epoch, TRAIN_EPOCHS, si, n_train, avg,
-                       expf(avg < 10.0f ? avg : 10.0f), lr);
-                fflush(stdout);
+                char suf[80];
+                snprintf(suf, sizeof(suf),
+                         "%zu/%zu  loss=%.4f  ppl=%.1f  lr=%.1e",
+                         si, n_train, avg,
+                         expf(avg < 10.0f ? avg : 10.0f), cur_lr);
+                print_bar((int)si, (int)n_train, suf);
             }
         }
 
@@ -522,7 +546,7 @@ void train(const char* csv_file) {
         };
         history_add_epoch(hist, rec);
 
-        printf("\r  Epoch %d/%d | train=%.4f ppl=%.1f | val=%.4f ppl=%.1f | %.0fs   \n",
+        printf("\n  Epoch %d/%d | train=%.4f ppl=%.1f | val=%.4f ppl=%.1f | %.0fs\n",
                epoch, TRAIN_EPOCHS,
                avg_train, rec.train_ppl,
                val_loss,  rec.val_ppl,

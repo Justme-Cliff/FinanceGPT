@@ -3,7 +3,7 @@
 #include "compat.h"
 #include "config.h"
 
-/* TF-IDF knowledge base over CSV Q&A pairs.
+/* BM25 knowledge base over CSV Q&A pairs.
    Exact port of knowledge_base.py — scratch-built, no external libs. */
 
 typedef struct {
@@ -37,6 +37,10 @@ typedef struct {
 
     /* Per-document L2 norm (for cosine similarity) */
     float* doc_norms;    /* [n_docs] */
+
+    /* BM25 length statistics */
+    float  avgdl;        /* average document length */
+    int*   doc_len;      /* [n_docs] token count per document */
 } KnowledgeBase;
 
 typedef struct {

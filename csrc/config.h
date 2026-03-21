@@ -8,21 +8,21 @@
 #define N_HEADS       8
 #define N_LAYERS      4
 #define D_FF          1536
-#define MAX_SEQ_LEN   128
+#define MAX_SEQ_LEN   512
 #define D_K           (D_MODEL / N_HEADS)   /* 64 */
 #define DROPOUT       0.10f
 
 /* ── Training ───────────────────────────────────────────────────── */
 #define TRAIN_EPOCHS         8
 #define TRAIN_BATCH_SIZE     64
-#define TRAIN_GRAD_ACCUM     1
+#define TRAIN_GRAD_ACCUM     8
 #define TRAIN_LR             2e-4f
 #define TRAIN_MIN_LR         5e-6f
 #define TRAIN_WARMUP_STEPS   100
 #define TRAIN_GRAD_CLIP      1.0f
 #define TRAIN_LABEL_SMOOTH   0.05f
 #define TRAIN_VAL_SPLIT      0.10f
-#define TRAIN_BLOCK_SIZE     128
+#define TRAIN_BLOCK_SIZE     512
 #define TRAIN_PATIENCE       3
 
 /* ── Generation ─────────────────────────────────────────────────── */

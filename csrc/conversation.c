@@ -243,29 +243,26 @@ char* conv_format_recent(ConversationMemory* m, int n_turns) {
     size_t len = 0;
 
     for (int i = 0; i < n; i++) {
-        /* Format "You:" line */
-        char line[512];
+        char line[640];
         int  ll;
 
-        ll = snprintf(line, sizeof(line), "  [%.16s] You: %.80s\n",
-                      turns[i].timestamp, turns[i].question);
+        /* Format "User:" line */
+        ll = snprintf(line, sizeof(line), "User: %.512s\n", turns[i].question);
         if (ll < 0) ll = 0;
         while (len + (size_t)ll + 4 > cap) { cap *= 2; out = (char*)xrealloc(out, cap); }
         memcpy(out + len, line, (size_t)ll);
         len += (size_t)ll;
 
-        /* Format "AI:" preview */
-        char preview[128];
-        strncpy(preview, turns[i].answer, 120);
-        preview[120] = '\0';
-        if (strlen(turns[i].answer) > 120) {
-            strcat(preview, "...");
-        }
-        ll = snprintf(line, sizeof(line), "           AI : %s\n", preview);
+        /* Format "Assistant:" line with full answer */
+        ll = snprintf(line, sizeof(line), "Assistant: %.512s\n", turns[i].answer);
         if (ll < 0) ll = 0;
         while (len + (size_t)ll + 4 > cap) { cap *= 2; out = (char*)xrealloc(out, cap); }
         memcpy(out + len, line, (size_t)ll);
         len += (size_t)ll;
+
+        /* Blank line between turns */
+        while (len + 4 > cap) { cap *= 2; out = (char*)xrealloc(out, cap); }
+        out[len++] = '\n';
     }
     out[len] = '\0';
     return out;

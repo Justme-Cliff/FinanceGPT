@@ -12,6 +12,9 @@
 #  include <dirent.h>
 #endif
 
+#define BM25_K1  1.5f
+#define BM25_B   0.75f
+
 /* ─────────────────────────────────────────────────────────────────────────
    Stopwords
    ───────────────────────────────────────────────────────────────────────── */
@@ -371,7 +374,7 @@ KnowledgeBase* kb_create(const char* data_dir) {
 
     /* ── Step 2: Build per-doc term frequencies & vocabulary ────────── */
 
-    typedef struct { int* term_ids; float* tf; int n; } DocTerms;
+    typedef struct { int* term_ids; float* tf; int n; int n_toks; } DocTerms;
     DocTerms* all_dt = (DocTerms*)xcalloc((size_t)kb->n_docs, sizeof(DocTerms));
 
     /* document-frequency counter (per vocab slot) */
@@ -433,6 +436,7 @@ KnowledgeBase* kb_create(const char* data_dir) {
         all_dt[d].term_ids = term_ids;
         all_dt[d].tf       = tf;
         all_dt[d].n        = n_unique;
+        all_dt[d].n_toks   = n_toks;
     }
 
     /* ── Step 3: Compute IDF, build inverted index, compute doc norms ── */
@@ -440,6 +444,17 @@ KnowledgeBase* kb_create(const char* data_dir) {
     for (int t = 0; t < kb->n_terms; t++) {
         /* Smoothed IDF: log((N+1)/(df+1)) + 1  (sklearn default) */
         kb->idf[t] = logf((float)(kb->n_docs + 1) / (float)(doc_freq[t] + 1)) + 1.0f;
+    }
+
+    /* Allocate and populate doc_len; compute avgdl */
+    kb->doc_len = (int*)xmalloc((size_t)kb->n_docs * sizeof(int));
+    {
+        long long total_len = 0;
+        for (int d = 0; d < kb->n_docs; d++) {
+            kb->doc_len[d] = all_dt[d].n_toks;
+            total_len += all_dt[d].n_toks;
+        }
+        kb->avgdl = (kb->n_docs > 0) ? (float)total_len / (float)kb->n_docs : 1.0f;
     }
 
     kb->doc_norms = (float*)xcalloc((size_t)kb->n_docs, sizeof(float));
@@ -493,6 +508,7 @@ void kb_free(KnowledgeBase* kb) {
     free(kb->inv_len);
     free(kb->inv_cap);
     free(kb->doc_norms);
+    free(kb->doc_len);
     free(kb);
 }
 
@@ -518,6 +534,8 @@ KbResult* kb_search(KnowledgeBase* kb, const char* query, int top_k) {
     /* Query vector norm accumulator */
     float q_norm = 0.0f;
 
+    float avgdl = (kb->avgdl > 0.0f) ? kb->avgdl : 1.0f;
+
     for (int qi = 0; qi < n_qtoks; qi++) {
         int tid = term_lookup(kb, qtoks[qi]);
         free(qtoks[qi]);
@@ -528,9 +546,16 @@ KbResult* kb_search(KnowledgeBase* kb, const char* query, int top_k) {
         q_norm += qtfidf * qtfidf;
 
         for (int i = 0; i < kb->inv_len[tid]; i++) {
-            int   doc_id = kb->inv_doc_ids[tid][i];
-            float dtv    = kb->inv_tfidf[tid][i];
-            scores[doc_id] += qtfidf * dtv;
+            int   doc_id  = kb->inv_doc_ids[tid][i];
+            float dtfidf  = kb->inv_tfidf[tid][i];
+            /* Recover raw tf from stored tfidf value */
+            float tf      = dtfidf / kb->idf[tid];
+            float dl      = (float)kb->doc_len[doc_id];
+            /* BM25 per-term score */
+            float bm25    = kb->idf[tid]
+                            * (tf * (BM25_K1 + 1.0f))
+                            / (tf + BM25_K1 * (1.0f - BM25_B + BM25_B * (dl / avgdl)));
+            scores[doc_id] += qtfidf * bm25;
         }
     }
     free(qtoks);

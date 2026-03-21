@@ -39,7 +39,7 @@ CalcResult calc_agent_run(const char* query) {
     int n = find_numbers(query, nums, 16);
     if (n < 2) return res;
 
-    int cap = 10;
+    int cap = 20;
     res.results = (char**)xmalloc(cap * sizeof(char*));
     char buf[512];
 
@@ -162,6 +162,126 @@ CalcResult calc_agent_run(const char* query) {
             snprintf(buf, sizeof(buf),
                      "Debt Payoff: $%.2f balance at %.2f%% paying $%.2f/month = %.1f months (%.1f years)",
                      balance, annual_r, pmt, months, months / 12.0);
+            res.results[res.n_results++] = xstrdup(buf);
+        }
+    }
+
+    /* CAGR */
+    if ((ci_contains(query, "cagr") || ci_contains(query, "compound annual growth") ||
+         ci_contains(query, "annualized return")) && n >= 3) {
+        double start_val = nums[0], end_val = nums[1], years = nums[2];
+        if (start_val != 0.0 && years != 0.0) {
+            double cagr = (pow(end_val / start_val, 1.0 / years) - 1.0) * 100.0;
+            snprintf(buf, sizeof(buf),
+                     "CAGR: ($%.2f / $%.2f)^(1/%.0f) - 1 = %.2f%%",
+                     end_val, start_val, years, cagr);
+            res.results[res.n_results++] = xstrdup(buf);
+        }
+    }
+
+    /* Debt-to-Equity */
+    if ((ci_contains(query, "debt to equity") || ci_contains(query, "d/e ratio") ||
+         ci_contains(query, "leverage ratio")) && n >= 2) {
+        double total_debt = nums[0], total_equity = nums[1];
+        if (total_equity != 0.0) {
+            snprintf(buf, sizeof(buf),
+                     "Debt-to-Equity: $%.2f / $%.2f = %.2fx",
+                     total_debt, total_equity, total_debt / total_equity);
+            res.results[res.n_results++] = xstrdup(buf);
+        }
+    }
+
+    /* Current Ratio */
+    if ((ci_contains(query, "current ratio") || ci_contains(query, "liquidity ratio")) && n >= 2) {
+        double current_assets = nums[0], current_liabilities = nums[1];
+        if (current_liabilities != 0.0) {
+            snprintf(buf, sizeof(buf),
+                     "Current Ratio: $%.2f / $%.2f = %.2f",
+                     current_assets, current_liabilities,
+                     current_assets / current_liabilities);
+            res.results[res.n_results++] = xstrdup(buf);
+        }
+    }
+
+    /* Dividend Yield */
+    if ((ci_contains(query, "dividend yield") || ci_contains(query, "yield on cost")) && n >= 2) {
+        double annual_dividend = nums[0], stock_price = nums[1];
+        if (stock_price != 0.0) {
+            snprintf(buf, sizeof(buf),
+                     "Dividend Yield: $%.2f / $%.2f * 100 = %.2f%%",
+                     annual_dividend, stock_price,
+                     annual_dividend / stock_price * 100.0);
+            res.results[res.n_results++] = xstrdup(buf);
+        }
+    }
+
+    /* Break-even */
+    if ((ci_contains(query, "break even") || ci_contains(query, "breakeven") ||
+         ci_contains(query, "fixed costs")) && n >= 3) {
+        double fixed_costs = nums[0], price = nums[1], variable_cost = nums[2];
+        double contribution = price - variable_cost;
+        if (contribution != 0.0) {
+            snprintf(buf, sizeof(buf),
+                     "Break-even: $%.2f / ($%.2f - $%.2f) = %.2f units",
+                     fixed_costs, price, variable_cost,
+                     fixed_costs / contribution);
+            res.results[res.n_results++] = xstrdup(buf);
+        }
+    }
+
+    /* Dollar-Cost Averaging */
+    if ((ci_contains(query, "dca") || ci_contains(query, "dollar cost averaging") ||
+         ci_contains(query, "monthly investment")) && n >= 3) {
+        double monthly_amount = nums[0], months = nums[1], share_price = nums[2];
+        double total_invested = monthly_amount * months;
+        double shares_bought  = (share_price != 0.0) ? total_invested / share_price : 0.0;
+        double avg_cost       = (shares_bought != 0.0) ? total_invested / shares_bought : 0.0;
+        snprintf(buf, sizeof(buf),
+                 "DCA: $%.2f/month x %.0f months = $%.2f invested; avg cost = $%.2f/share",
+                 monthly_amount, months, total_invested, avg_cost);
+        res.results[res.n_results++] = xstrdup(buf);
+    }
+
+    /* Rule of 72 */
+    if ((ci_contains(query, "rule of 72") || ci_contains(query, "double my money") ||
+         ci_contains(query, "doubling time")) && n >= 1) {
+        double rate = nums[0];
+        if (rate != 0.0) {
+            snprintf(buf, sizeof(buf),
+                     "Rule of 72: 72 / %.2f%% = %.1f years to double",
+                     rate, 72.0 / rate);
+            res.results[res.n_results++] = xstrdup(buf);
+        }
+    }
+
+    /* Real Return */
+    if ((ci_contains(query, "real return") || ci_contains(query, "inflation adjusted")) && n >= 2) {
+        double nominal = nums[0], inflation = nums[1];
+        double real_ret = ((1.0 + nominal / 100.0) / (1.0 + inflation / 100.0) - 1.0) * 100.0;
+        snprintf(buf, sizeof(buf),
+                 "Real Return: ((1 + %.2f%%) / (1 + %.2f%%) - 1) * 100 = %.2f%%",
+                 nominal, inflation, real_ret);
+        res.results[res.n_results++] = xstrdup(buf);
+    }
+
+    /* Portfolio Expected Return */
+    if ((ci_contains(query, "expected return") || ci_contains(query, "weighted average return")) && n >= 4) {
+        double w1 = nums[0], r1 = nums[1], w2 = nums[2], r2 = nums[3];
+        double exp_ret = w1 * r1 + w2 * r2;
+        snprintf(buf, sizeof(buf),
+                 "Portfolio Expected Return: %.2f*%.2f%% + %.2f*%.2f%% = %.2f%%",
+                 w1, r1, w2, r2, exp_ret);
+        res.results[res.n_results++] = xstrdup(buf);
+    }
+
+    /* P/B Ratio */
+    if ((ci_contains(query, "price to book") || ci_contains(query, "p/b ratio") ||
+         ci_contains(query, "book value")) && n >= 2) {
+        double market_price = nums[0], book_value = nums[1];
+        if (book_value != 0.0) {
+            snprintf(buf, sizeof(buf),
+                     "P/B Ratio: $%.2f / $%.2f = %.2fx",
+                     market_price, book_value, market_price / book_value);
             res.results[res.n_results++] = xstrdup(buf);
         }
     }
@@ -392,24 +512,33 @@ char* orchestrator_process(Orchestrator* o,
         OAPP("\n");
     }
 
-    const char* model_text = agents[3].response ? agents[3].response : "";
-    int model_ok = (int)(strlen(model_text) >= 30);
+    /* Improved synthesis */
+    float best_score = best_kb_score;
+    int   model_len  = agents[3].response ? (int)strlen(agents[3].response) : 0;
+    int   has_calc   = (agents[1].calcs.n_results > 0);
+    const char* result = agents[3].response ? agents[3].response : "";
+    const char* final_answer = NULL;
 
-    /* Use KB answer when score >= threshold or model output is too short */
-    int use_kb = (!model_ok) || (best_kb_score >= KB_DIRECT_SCORE);
-
-    if (model_ok && !use_kb) {
-        OAPP(model_text);
-    } else if (best_kb) {
-        OAPP(best_kb->answer);
-        OAPP("\n\n[Source: ");
-        OAPP(best_kb->source);
-        OAPP("]");
-    } else if (model_ok) {
-        OAPP(model_text);
+    if (best_score >= 0.35f) {
+        /* High confidence KB hit — use KB answer directly */
+        final_answer = best_kb ? best_kb->answer : result;
+    } else if (has_calc && model_len > 30) {
+        /* Calculation detected — model output already includes calc context */
+        final_answer = result;
+    } else if (best_score >= 0.15f && model_len > 50) {
+        /* Medium KB confidence + decent model output — use model (it was enriched by KB) */
+        final_answer = result;
+    } else if (model_len >= 30) {
+        /* Model produced something reasonable */
+        final_answer = result;
+    } else if (best_score > 0.05f && best_kb) {
+        /* Model output too short — fall back to best KB result */
+        final_answer = best_kb->answer;
     } else {
-        OAPP("I don't have information on that yet. Try rephrasing your question.");
+        final_answer = "I don't have enough information on this topic in my knowledge base.";
     }
+
+    OAPP(final_answer);
 
 #undef OAPP
 

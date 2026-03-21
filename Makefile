@@ -52,6 +52,16 @@ else
     $(info OpenMP: not available)
 endif
 
+# ── OpenBLAS detection (best GEMM available) ─────────────────────────
+BLAS_CHECK := $(shell echo 'int main(){return 0;}' | $(CC) -lopenblas -x c - -o /dev/null 2>/dev/null && echo yes)
+ifeq ($(BLAS_CHECK),yes)
+    CFLAGS  += -DHAVE_OPENBLAS
+    LDLIBS  += -lopenblas
+    $(info OpenBLAS: enabled)
+else
+    $(info OpenBLAS: not found -- using built-in GEMM)
+endif
+
 # ── Targets ──────────────────────────────────────────────────────────
 .PHONY: all clean info
 

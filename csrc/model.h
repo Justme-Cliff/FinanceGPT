@@ -82,11 +82,9 @@ typedef struct {
     int   step;
     float best_val_loss;
 
-    /* Workspace buffers (pre-allocated for inference) */
-    float* ws_x;        /* [batch * max_seq_len * d_model] */
-    float* ws_qkv;      /* [batch * max_seq_len * 3 * d_model] */
-    float* ws_attn;     /* [batch * n_heads * max_seq_len^2] */
-    float* ws_ffn;      /* [batch * max_seq_len * d_ff * 2] */
+    /* Pre-allocated scratch workspace for forward pass (avoids malloc per call) */
+    float* ws;          /* single slab covering all scratch buffers */
+    size_t ws_size;     /* size in floats */
 } Model;
 
 /* ── Lifecycle ─────────────────────────────────────────────────── */
@@ -129,6 +127,26 @@ void         activations_free   (Activations* a, const ModelConfig* cfg);
 float model_train_step (Model* m, const int* x_ids, const int* y_ids, int T,
                         int batch_size, float label_smoothing,
                         Activations* acts);
+
+/* ── KV Cache (for fast autoregressive generation) ──────────────── */
+/* Stores K and V for all seen positions so generation is O(T), not O(T^2). */
+typedef struct {
+    float* k;       /* [n_layers * n_heads * max_len * d_k] */
+    float* v;       /* [n_layers * n_heads * max_len * d_k] */
+    int    max_len;
+    int    n_layers;
+    int    n_heads;
+    int    d_k;
+} KVCache;
+
+KVCache* kv_cache_create(int n_layers, int n_heads, int max_len, int d_k);
+void     kv_cache_free  (KVCache* c);
+void     kv_cache_reset (KVCache* c);
+
+/* Single-token forward pass with KV cache.
+   Processes token_id at sequence position pos, writes K/V into cache,
+   returns logits[vocab_size] in pre-allocated output buffer. */
+void model_forward_one(Model* m, int token_id, int pos, KVCache* cache, float* logits);
 
 /* ── Generation ─────────────────────────────────────────────────── */
 /* Returns heap-allocated array of token ids (prompt + generated).

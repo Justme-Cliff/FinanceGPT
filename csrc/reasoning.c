@@ -312,9 +312,9 @@ char* reasoning_build_context(const char* question,
     /* ── Recent conversation (last 3 turns) ─────────────────────────── */
     if (n_history > 0) {
         int hist_start = n_history > 3 ? n_history - 3 : 0;
-        CTX_APPEND("=== Recent conversation ===\n");
+        CTX_APPEND("[Conversation History]\n");
         for (int i = hist_start; i < n_history; i++) {
-            CTX_APPEND("Q: ");
+            CTX_APPEND("User: ");
             CTX_APPEND(history[i].question);
             CTX_APPEND("\n");
 
@@ -325,7 +325,7 @@ char* reasoning_build_context(const char* question,
             if (strlen(history[i].answer) > 200) {
                 preview[200] = '.'; preview[201] = '.'; preview[202] = '.'; preview[203] = '\0';
             }
-            CTX_APPEND("A: ");
+            CTX_APPEND("Assistant: ");
             CTX_APPEND(preview);
             CTX_APPEND("\n");
         }
@@ -335,12 +335,12 @@ char* reasoning_build_context(const char* question,
     /* ── Retrieved knowledge (top 3) ───────────────────────────────── */
     int n_show = n_results > 3 ? 3 : n_results;
     if (n_show > 0 && results) {
-        CTX_APPEND("=== Relevant knowledge ===\n");
+        CTX_APPEND("[Context]\n");
         for (int i = 0; i < n_show; i++) {
             /* Skip very low-quality results */
             if (results[i].score < KB_MIN_SCORE) continue;
 
-            /* Format: "[1] [Source_name] <answer text>" */
+            /* Format: Source / Q / A / separator */
             char source_title[64];
             strncpy(source_title, results[i].source, 63);
             source_title[63] = '\0';
@@ -350,9 +350,13 @@ char* reasoning_build_context(const char* question,
             if (source_title[0])
                 source_title[0] = (char)toupper((unsigned char)source_title[0]);
 
-            char prefix[80];
-            snprintf(prefix, sizeof(prefix), "[%d] [%s] ", i + 1, source_title);
+            char prefix[128];
+            snprintf(prefix, sizeof(prefix), "[Retrieved Knowledge]\nSource: %s\n", source_title);
             CTX_APPEND(prefix);
+
+            CTX_APPEND("Q: ");
+            CTX_APPEND(results[i].question);
+            CTX_APPEND("\n");
 
             /* Truncate very long answers to keep context window sane */
             char ans[512];
@@ -361,8 +365,9 @@ char* reasoning_build_context(const char* question,
             if (strlen(results[i].answer) > 508) {
                 strcat(ans, "...");
             }
+            CTX_APPEND("A: ");
             CTX_APPEND(ans);
-            CTX_APPEND("\n");
+            CTX_APPEND("\n---\n");
         }
         CTX_APPEND("\n");
     }
@@ -411,9 +416,10 @@ char* reasoning_build_prompt(const char* question, const char* context,
         PROMPT_APPEND("\n");
     }
 
-    PROMPT_APPEND("Q: ");
+    PROMPT_APPEND("[Question]\n");
+    PROMPT_APPEND("User: ");
     PROMPT_APPEND(question);
-    PROMPT_APPEND(" <SEP> A:");
+    PROMPT_APPEND("\nAssistant:");
 
     return prompt;
 }

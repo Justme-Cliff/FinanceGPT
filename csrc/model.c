@@ -134,6 +134,20 @@ Model* model_create(ModelConfig cfg)
     m->step          = 0;
     m->best_val_loss = 1e30f;
 
+    /* ── Pre-allocate forward-pass scratch workspace ─────────────── */
+    /* Covers: x, xn, qkv, q, k, v, attn_w, attn_out, tmp, gate, up, act */
+    int T  = cfg.max_seq_len;
+    int dm = cfg.d_model;
+    int dk = cfg.d_k;
+    int nh = cfg.n_heads;
+    int df = cfg.d_ff;
+    m->ws_size = (size_t)(T*dm*4          /* x, xn, attn_out, tmp */
+                        + T*3*dm          /* qkv */
+                        + nh*T*dk*3       /* q, k, v */
+                        + nh*T*T          /* attn_w */
+                        + T*df*3);        /* gate, up, act */
+    m->ws = (float*)xmalloc(m->ws_size * sizeof(float));
+
     return m;
 }
 
@@ -145,6 +159,7 @@ void model_free(Model* m)
     if (!m) return;
     const ModelConfig* c = &m->cfg;
 
+    free(m->ws);
     free(m->embed);
 
     if (m->blocks) {
@@ -441,19 +456,20 @@ void model_forward(Model* m, const int* ids, int T, float* logits)
     const int df = c->d_ff;
     const int vs = c->vocab_size;
 
-    /* ── Scratch buffers ─────────────────────────────────────────── */
-    float* x        = (float*)xmalloc((size_t)T * dm * sizeof(float));
-    float* xn       = (float*)xmalloc((size_t)T * dm * sizeof(float));
-    float* qkv      = (float*)xmalloc((size_t)T * 3 * dm * sizeof(float));
-    float* q        = (float*)xmalloc((size_t)nh * T * dk * sizeof(float));
-    float* k        = (float*)xmalloc((size_t)nh * T * dk * sizeof(float));
-    float* v        = (float*)xmalloc((size_t)nh * T * dk * sizeof(float));
-    float* attn_w   = (float*)xmalloc((size_t)nh * T * T  * sizeof(float));
-    float* attn_out = (float*)xmalloc((size_t)T * dm * sizeof(float));
-    float* tmp      = (float*)xmalloc((size_t)T * dm * sizeof(float));
-    float* gate     = (float*)xmalloc((size_t)T * df * sizeof(float));
-    float* up       = (float*)xmalloc((size_t)T * df * sizeof(float));
-    float* act      = (float*)xmalloc((size_t)T * df * sizeof(float));
+    /* ── Scratch buffers — sliced from pre-allocated workspace ─────── */
+    float* ws = m->ws;
+    float* x        = ws;                         ws += (size_t)T * dm;
+    float* xn       = ws;                         ws += (size_t)T * dm;
+    float* attn_out = ws;                         ws += (size_t)T * dm;
+    float* tmp      = ws;                         ws += (size_t)T * dm;
+    float* qkv      = ws;                         ws += (size_t)T * 3 * dm;
+    float* q        = ws;                         ws += (size_t)nh * T * dk;
+    float* k        = ws;                         ws += (size_t)nh * T * dk;
+    float* v        = ws;                         ws += (size_t)nh * T * dk;
+    float* attn_w   = ws;                         ws += (size_t)nh * T * T;
+    float* gate     = ws;                         ws += (size_t)T * df;
+    float* up       = ws;                         ws += (size_t)T * df;
+    float* act      = ws;
 
     /* ── Embedding lookup ────────────────────────────────────────── */
     for (int t = 0; t < T; t++) {
@@ -534,19 +550,6 @@ void model_forward(Model* m, const int* ids, int T, float* logits)
     /* ── LM head: logits = xn @ embed^T  (weight-tied) ──────────── */
     matmul_t_f32(xn, m->embed, logits, T, dm, vs);
 
-    /* ── Cleanup ─────────────────────────────────────────────────── */
-    free(x);
-    free(xn);
-    free(qkv);
-    free(q);
-    free(k);
-    free(v);
-    free(attn_w);
-    free(attn_out);
-    free(tmp);
-    free(gate);
-    free(up);
-    free(act);
 }
 
 /* ════════════════════════════════════════════════════════════════════
@@ -1045,7 +1048,179 @@ float model_train_step(Model* m, const int* x_ids, const int* y_ids, int T,
 }
 
 /* ════════════════════════════════════════════════════════════════════
- * model_generate  — autoregressive generation with top-k/p sampling
+ * KV Cache lifecycle
+ * ════════════════════════════════════════════════════════════════════ */
+KVCache* kv_cache_create(int n_layers, int n_heads, int max_len, int d_k)
+{
+    KVCache* c = (KVCache*)xcalloc(1, sizeof(KVCache));
+    c->n_layers = n_layers;
+    c->n_heads  = n_heads;
+    c->max_len  = max_len;
+    c->d_k      = d_k;
+    size_t sz   = (size_t)n_layers * n_heads * max_len * d_k;
+    c->k = (float*)xcalloc(sz, sizeof(float));
+    c->v = (float*)xcalloc(sz, sizeof(float));
+    return c;
+}
+
+void kv_cache_free(KVCache* c)
+{
+    if (!c) return;
+    free(c->k);
+    free(c->v);
+    free(c);
+}
+
+void kv_cache_reset(KVCache* c)
+{
+    if (!c) return;
+    size_t sz = (size_t)c->n_layers * c->n_heads * c->max_len * c->d_k;
+    memset(c->k, 0, sz * sizeof(float));
+    memset(c->v, 0, sz * sizeof(float));
+}
+
+/* ════════════════════════════════════════════════════════════════════
+ * model_forward_one — single-token forward pass with KV cache
+ *
+ * Processes token_id at sequence position `pos`.
+ * Writes new K/V into cache at position pos.
+ * Fills logits[vocab_size] with the predictions for the next token.
+ *
+ * All scratch buffers are sliced from the pre-allocated m->ws slab
+ * (the slab is large enough; T=1 only uses a small fraction of it).
+ * ════════════════════════════════════════════════════════════════════ */
+void model_forward_one(Model* m, int token_id, int pos, KVCache* cache, float* logits)
+{
+    const ModelConfig* c  = &m->cfg;
+    const int dm  = c->d_model;
+    const int dk  = c->d_k;
+    const int nh  = c->n_heads;
+    const int df  = c->d_ff;
+    const int vs  = c->vocab_size;
+
+    /* ── Scratch buffers from pre-allocated workspace (T=1) ──────── */
+    float* ws       = m->ws;
+    float* x        = ws; ws += (size_t)dm;
+    float* xn       = ws; ws += (size_t)dm;
+    float* attn_out = ws; ws += (size_t)dm;
+    float* tmp      = ws; ws += (size_t)dm;
+    float* qkv      = ws; ws += (size_t)3 * dm;
+    float* q        = ws; ws += (size_t)nh * dk;
+    float* new_k    = ws; ws += (size_t)nh * dk;
+    float* new_v    = ws; ws += (size_t)nh * dk;
+    float* gate     = ws; ws += (size_t)df;
+    float* up       = ws; ws += (size_t)df;
+    float* act      = ws;
+
+    /* Attention score buffer — size bounded by max_seq_len (compile-time) */
+    float scores[MAX_SEQ_LEN];
+
+    /* ── Embedding lookup ────────────────────────────────────────── */
+    int id = (token_id >= 0 && token_id < vs) ? token_id : TOK_UNK_ID;
+    memcpy(x, m->embed + (size_t)id * dm, (size_t)dm * sizeof(float));
+
+    /* ── RoPE tables for this position ──────────────────────────── */
+    int rope_pos = pos < c->max_seq_len ? pos : c->max_seq_len - 1;
+    const float* pos_cos = m->rope_cos + (size_t)rope_pos * dk;
+    const float* pos_sin = m->rope_sin + (size_t)rope_pos * dk;
+
+    /* ── Transformer blocks ──────────────────────────────────────── */
+    for (int l = 0; l < c->n_layers; l++) {
+        const Block* b = &m->blocks[l];
+
+        /* Pre-attention RMSNorm */
+        rms_norm_f32(xn, x, b->ln1_w, dm, RMSNORM_EPS);
+
+        /* QKV projection (M=1): [3*dm] = xn @ attn_qkv^T */
+        matmul_t_f32(xn, b->attn_qkv, qkv, 1, dm, 3 * dm);
+
+        /* Deinterleave into per-head Q, K, V [nh, dk] */
+        for (int h = 0; h < nh; h++) {
+            memcpy(q     + h * dk, qkv              + h * dk, (size_t)dk * sizeof(float));
+            memcpy(new_k + h * dk, qkv +     dm     + h * dk, (size_t)dk * sizeof(float));
+            memcpy(new_v + h * dk, qkv + 2 * dm     + h * dk, (size_t)dk * sizeof(float));
+        }
+
+        /* Apply RoPE at position `pos` to q and new_k */
+        for (int h = 0; h < nh; h++) {
+            float* qh = q     + h * dk;
+            float* kh = new_k + h * dk;
+            for (int i = 0; i < dk; i += 2) {
+                float q0 = qh[i],    q1 = qh[i+1];
+                float k0 = kh[i],    k1 = kh[i+1];
+                qh[i]   = q0 * pos_cos[i]   - q1 * pos_sin[i];
+                qh[i+1] = q1 * pos_cos[i+1] + q0 * pos_sin[i+1];
+                kh[i]   = k0 * pos_cos[i]   - k1 * pos_sin[i];
+                kh[i+1] = k1 * pos_cos[i+1] + k0 * pos_sin[i+1];
+            }
+        }
+
+        /* Write new K/V into cache at position pos */
+        for (int h = 0; h < nh; h++) {
+            float* ck = cache->k + ((size_t)(l * nh + h) * cache->max_len + pos) * dk;
+            float* cv = cache->v + ((size_t)(l * nh + h) * cache->max_len + pos) * dk;
+            memcpy(ck, new_k + h * dk, (size_t)dk * sizeof(float));
+            memcpy(cv, new_v + h * dk, (size_t)dk * sizeof(float));
+        }
+
+        /* Causal attention: q[h] attends to cache K/V at positions 0..pos */
+        float scale   = 1.0f / sqrtf((float)dk);
+        int   n_pos   = pos + 1;  /* number of positions to attend over */
+        vec_zero_f32(attn_out, dm);
+
+        for (int h = 0; h < nh; h++) {
+            const float* qh = q + h * dk;
+
+            /* Compute scores */
+            for (int j = 0; j < n_pos; j++) {
+                const float* ck = cache->k + ((size_t)(l * nh + h) * cache->max_len + j) * dk;
+                scores[j] = vec_dot_f32(qh, ck, dk) * scale;
+            }
+            softmax_inplace_f32(scores, n_pos);
+
+            /* Aggregate values into attn_out (interleaved head layout: [T, d_model]) */
+            int out_base = h * dk;
+            for (int j = 0; j < n_pos; j++) {
+                float w = scores[j];
+                const float* cv = cache->v + ((size_t)(l * nh + h) * cache->max_len + j) * dk;
+                for (int d = 0; d < dk; d++)
+                    attn_out[out_base + d] += w * cv[d];
+            }
+        }
+
+        /* Output projection (M=1) */
+        matmul_t_f32(attn_out, b->attn_proj, tmp, 1, dm, dm);
+
+        /* Residual add */
+        vec_add_f32(x, tmp, dm);
+
+        /* Pre-FFN RMSNorm */
+        rms_norm_f32(xn, x, b->ln2_w, dm, RMSNORM_EPS);
+
+        /* SwiGLU FFN (M=1) */
+        matmul_t_f32(xn, b->ffn_gate, gate, 1, dm, df);
+        matmul_t_f32(xn, b->ffn_up,   up,   1, dm, df);
+        silu_f32(act, gate, df);
+        vec_mul_f32(act, act, up, df);
+        matmul_t_f32(act, b->ffn_down, tmp, 1, df, dm);
+
+        /* Residual add */
+        vec_add_f32(x, tmp, dm);
+    }
+
+    /* Final RMSNorm */
+    rms_norm_f32(xn, x, m->ln_f, dm, RMSNORM_EPS);
+
+    /* LM head: logits[vocab_size] = xn @ embed^T */
+    matmul_t_f32(xn, m->embed, logits, 1, dm, vs);
+}
+
+/* ════════════════════════════════════════════════════════════════════
+ * model_generate  — autoregressive generation with KV cache
+ *
+ * Uses model_forward_one for O(T) per step (vs O(T^2) without cache).
+ * Prompt is processed token-by-token to fill the cache; then each
+ * new token only processes a single position.
  *
  * Returns heap-allocated array containing the full sequence
  * (prompt + generated tokens).  Caller must free().
@@ -1056,9 +1231,12 @@ int* model_generate(Model* m, const int* prompt_ids, int prompt_len,
                     int top_k, float top_p, float rep_penalty,
                     int eos_id, int* out_len)
 {
-    const ModelConfig* c = &m->cfg;
+    const ModelConfig* c  = &m->cfg;
     const int vs      = c->vocab_size;
     const int max_ctx = c->max_seq_len;
+
+    /* Create KV cache — filled during prompt processing, grown during generation */
+    KVCache* cache = kv_cache_create(c->n_layers, c->n_heads, max_ctx, c->d_k);
 
     /* Working buffer: prompt + up to max_new_tokens */
     int buf_cap = prompt_len + max_new_tokens + 8;
@@ -1071,18 +1249,22 @@ int* model_generate(Model* m, const int* prompt_ids, int prompt_len,
 
     uint64_t rng = (uint64_t)time(NULL) ^ 0xDEADBEEF12345678ULL;
 
-    for (int step = 0; step < max_new_tokens; step++) {
-        /* Clamp context to max_seq_len */
-        int ctx_start = (n > max_ctx) ? (n - max_ctx) : 0;
-        int ctx_len   = n - ctx_start;
+    /* Clamp prompt to max_ctx (take the last max_ctx tokens if too long) */
+    int prompt_start   = (n > max_ctx) ? (n - max_ctx) : 0;
+    int prompt_ctx_len = n - prompt_start;
 
-        /* Full forward on current context; take last token's logits. */
-        float* all_logits = (float*)xmalloc((size_t)ctx_len * vs * sizeof(float));
-        model_forward(m, buf + ctx_start, ctx_len, all_logits);
-        memcpy(logits,
-               all_logits + (size_t)(ctx_len - 1) * vs,
-               (size_t)vs * sizeof(float));
-        free(all_logits);
+    /* ── Phase 1: process prompt tokens to fill KV cache ──────────
+       After this loop, `logits` holds the predictions for the first
+       generated token (the output from the last prompt token).      */
+    for (int p = 0; p < prompt_ctx_len; p++)
+        model_forward_one(m, buf[prompt_start + p], p, cache, logits);
+
+    int cache_pos = prompt_ctx_len;  /* next free cache position */
+
+    /* ── Phase 2: autoregressive generation ───────────────────────
+       Each iteration: sample from current logits, emit the token,
+       run one forward pass on that token to get logits for the next. */
+    for (int step = 0; step < max_new_tokens; step++) {
 
         /* ── Repetition penalty ──────────────────────────────────── */
         if (rep_penalty != 1.0f) {
@@ -1116,8 +1298,29 @@ int* model_generate(Model* m, const int* prompt_ids, int prompt_len,
         buf[n++] = next_id;
 
         if (next_id == eos_id) break;
+        if (step == max_new_tokens - 1) break;
+
+        /* ── Slide cache window if full ──────────────────────────── */
+        if (cache_pos >= max_ctx) {
+            /* Shift K/V left by 1 position to make room */
+            int nl = c->n_layers, nh = c->n_heads, dk = c->d_k;
+            for (int l = 0; l < nl; l++) {
+                for (int h = 0; h < nh; h++) {
+                    float* ck = cache->k + ((size_t)(l * nh + h) * max_ctx) * dk;
+                    float* cv = cache->v + ((size_t)(l * nh + h) * max_ctx) * dk;
+                    memmove(ck, ck + dk, (size_t)(max_ctx - 1) * dk * sizeof(float));
+                    memmove(cv, cv + dk, (size_t)(max_ctx - 1) * dk * sizeof(float));
+                }
+            }
+            cache_pos = max_ctx - 1;
+        }
+
+        /* ── Forward on the just-emitted token to get next logits ── */
+        model_forward_one(m, next_id, cache_pos, cache, logits);
+        cache_pos++;
     }
 
+    kv_cache_free(cache);
     free(logits);
     *out_len = n;
     return buf;

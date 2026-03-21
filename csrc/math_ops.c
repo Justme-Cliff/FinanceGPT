@@ -4,6 +4,10 @@
 #include <stdlib.h>
 #include <assert.h>
 
+#ifdef HAVE_OPENBLAS
+#  include <cblas.h>
+#endif
+
 /* ── RNG ─────────────────────────────────────────────────────────── */
 uint64_t rng_splitmix64(uint64_t* s) {
     uint64_t z = (*s += 0x9e3779b97f4a7c15ULL);
@@ -101,8 +105,27 @@ float vec_max_f32(const float* a, int n) {
     return m;
 }
 
-/* ── GEMM — tiled, OpenMP-parallel ─────────────────────────────── */
-/* A[M,K] @ B[K,N] = C[M,N], row-major */
+/* ── GEMM ────────────────────────────────────────────────────────── */
+/* Uses OpenBLAS when available (fastest), else hand-written AVX2 GEMM */
+
+#ifdef HAVE_OPENBLAS
+
+void matmul_f32(const float* A, const float* B, float* C, int M, int K, int N) {
+    cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
+                M, N, K, 1.0f, A, K, B, N, 0.0f, C, N);
+}
+void matmul_t_f32(const float* A, const float* B, float* C, int M, int K, int N) {
+    /* C = A @ B^T  —  B is [N,K] stored row-major, so transpose B */
+    cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasTrans,
+                M, N, K, 1.0f, A, K, B, K, 0.0f, C, N);
+}
+void matmul_acc_f32(const float* A, const float* B, float* C, int M, int K, int N) {
+    cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
+                M, N, K, 1.0f, A, K, B, N, 1.0f, C, N);
+}
+
+#else  /* built-in tiled AVX2 GEMM fallback */
+
 #define TILE 64
 void matmul_f32(const float* A, const float* B, float* C, int M, int K, int N) {
     vec_zero_f32(C, M * N);
@@ -130,17 +153,12 @@ void matmul_f32(const float* A, const float* B, float* C, int M, int K, int N) {
         }
     }
 }
-
-/* C = A @ B^T  (B is [N,K], we read rows of B as columns) */
 void matmul_t_f32(const float* A, const float* B, float* C, int M, int K, int N) {
     OMP_PARALLEL_FOR
-    for (int i = 0; i < M; i++) {
-        for (int j = 0; j < N; j++) {
+    for (int i = 0; i < M; i++)
+        for (int j = 0; j < N; j++)
             C[i * N + j] = vec_dot_f32(A + i * K, B + j * K, K);
-        }
-    }
 }
-
 void matmul_acc_f32(const float* A, const float* B, float* C, int M, int K, int N) {
     OMP_PARALLEL_FOR
     for (int i = 0; i < M; i++) {
@@ -162,6 +180,8 @@ void matmul_acc_f32(const float* A, const float* B, float* C, int M, int K, int 
         }
     }
 }
+
+#endif /* HAVE_OPENBLAS */
 
 /* ── SiLU  x * sigmoid(x) ────────────────────────────────────────── */
 void silu_f32(float* dst, const float* src, int n) {
