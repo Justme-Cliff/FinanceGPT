@@ -615,7 +615,8 @@ void generate_plots(const TrainHistory* h, const char* plots_dir) {
         for (int i = 0; i < nbins; i++) bin_x[i] = lmin + brange * (i + 0.5f) / nbins;
         for (int i = 0; i < n; i++) {
             int b = (int)((h->losses[i] - lmin) / brange * nbins);
-            if (b < 0) b = 0; if (b >= nbins) b = nbins - 1;
+            if (b < 0) b = 0;
+            if (b >= nbins) b = nbins - 1;
             bin_y[b] += 1.0f;
         }
         snprintf(path, sizeof(path), "%s/10_loss_histogram.svg", plots_dir);

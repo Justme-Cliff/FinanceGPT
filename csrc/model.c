@@ -349,7 +349,7 @@ Model* model_load(const char* path)
 
     /* Version */
     uint32_t ver = 0;
-    fread(&ver, sizeof(uint32_t), 1, f);
+    (void)fread(&ver, sizeof(uint32_t), 1, f);
     if (ver != 1) {
         fprintf(stderr, "[model_load] Unsupported version %u\n", ver);
         fclose(f);
@@ -358,12 +358,12 @@ Model* model_load(const char* path)
 
     /* Architecture fields */
     uint32_t vs, dm, nh, nl, df, msl;
-    fread(&vs,  sizeof(uint32_t), 1, f);
-    fread(&dm,  sizeof(uint32_t), 1, f);
-    fread(&nh,  sizeof(uint32_t), 1, f);
-    fread(&nl,  sizeof(uint32_t), 1, f);
-    fread(&df,  sizeof(uint32_t), 1, f);
-    fread(&msl, sizeof(uint32_t), 1, f);
+    (void)fread(&vs,  sizeof(uint32_t), 1, f);
+    (void)fread(&dm,  sizeof(uint32_t), 1, f);
+    (void)fread(&nh,  sizeof(uint32_t), 1, f);
+    (void)fread(&nl,  sizeof(uint32_t), 1, f);
+    (void)fread(&df,  sizeof(uint32_t), 1, f);
+    (void)fread(&msl, sizeof(uint32_t), 1, f);
 
     ModelConfig cfg;
     cfg.vocab_size  = (int)vs;
@@ -377,16 +377,16 @@ Model* model_load(const char* path)
     Model* m = model_create(cfg);  /* allocates + random-inits; will be overwritten */
 
     uint32_t n_tensors = 0;
-    fread(&n_tensors, sizeof(uint32_t), 1, f);
+    (void)fread(&n_tensors, sizeof(uint32_t), 1, f);
 
     for (uint32_t ti = 0; ti < n_tensors; ti++) {
         /* Name */
         uint32_t name_len = 0;
-        fread(&name_len, sizeof(uint32_t), 1, f);
+        (void)fread(&name_len, sizeof(uint32_t), 1, f);
         char name[256] = {0};
         uint32_t read_len = name_len < (uint32_t)(sizeof(name) - 1)
                             ? name_len : (uint32_t)(sizeof(name) - 1);
-        fread(name, 1, read_len, f);
+        (void)fread(name, 1, read_len, f);
         /* Skip any overflow bytes in the name */
         if (name_len > read_len)
             fseek(f, (long)(name_len - read_len), SEEK_CUR);
@@ -394,16 +394,16 @@ Model* model_load(const char* path)
 
         /* Dims */
         uint32_t n_dims = 0;
-        fread(&n_dims, sizeof(uint32_t), 1, f);
+        (void)fread(&n_dims, sizeof(uint32_t), 1, f);
         uint32_t dims[8] = {0};
         for (uint32_t d = 0; d < n_dims && d < 8; d++)
-            fread(&dims[d], sizeof(uint32_t), 1, f);
+            (void)fread(&dims[d], sizeof(uint32_t), 1, f);
         /* Skip extra dims */
         if (n_dims > 8)
             fseek(f, (long)((n_dims - 8) * sizeof(uint32_t)), SEEK_CUR);
 
         uint32_t n_elems = 0;
-        fread(&n_elems, sizeof(uint32_t), 1, f);
+        (void)fread(&n_elems, sizeof(uint32_t), 1, f);
 
         /* Resolve destination pointer */
         float* dst = NULL;
@@ -430,7 +430,7 @@ Model* model_load(const char* path)
         }
 
         if (dst) {
-            fread(dst, sizeof(float), n_elems, f);
+            (void)fread(dst, sizeof(float), n_elems, f);
         } else {
             fprintf(stderr, "[model_load] Unknown tensor '%s' — skipping\n", name);
             fseek(f, (long)(n_elems * sizeof(float)), SEEK_CUR);

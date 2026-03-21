@@ -265,7 +265,7 @@ static char** pre_tokenize(const char* text, int* out_n) {
                 /* Build candidate: buf + upcoming alpha */
                 char candidate[256];
                 size_t clen = len;
-                strncpy(candidate, buf, clen);
+                memcpy(candidate, buf, clen);
                 const char* pp = p;
                 while (*pp && isalpha((unsigned char)*pp) && clen < sizeof(candidate)-2) {
                     candidate[clen++] = (char)tolower((unsigned char)*pp);
