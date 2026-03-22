@@ -224,22 +224,13 @@ void optimizer_zero_grad(Model* m) {
 }
 
 float lr_schedule(int step, int total_steps, float lr, float min_lr, int warmup) {
-    (void)total_steps;
     /* Linear warmup */
     if (step < warmup)
         return lr * (float)step / (float)(warmup > 0 ? warmup : 1);
-    /* SGDR: Cosine Annealing with Warm Restarts */
-    int s = step - warmup;
-    int t0 = TRAIN_LR_RESTART_STEPS;
-    /* Find current cycle: cycle lengths grow by TRAIN_LR_RESTART_MULT */
-    int cycle_len = t0;
-    int cycle_start = 0;
-    while (cycle_start + cycle_len <= s) {
-        cycle_start += cycle_len;
-        cycle_len = (int)(cycle_len * TRAIN_LR_RESTART_MULT);
-        if (cycle_len < 1) cycle_len = 1;
-    }
-    float p = (float)(s - cycle_start) / (float)cycle_len;
+    /* Single-cycle cosine decay from peak LR down to min_LR over full training */
+    int decay_steps = total_steps - warmup;
+    if (decay_steps <= 0) return min_lr;
+    float p = (float)(step - warmup) / (float)decay_steps;
     if (p > 1.0f) p = 1.0f;
     return min_lr + (lr - min_lr) * 0.5f * (1.0f + cosf(3.14159265f * p));
 }
