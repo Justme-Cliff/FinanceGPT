@@ -183,6 +183,36 @@ void matmul_acc_f32(const float* A, const float* B, float* C, int M, int K, int 
 
 #endif /* HAVE_OPENBLAS */
 
+/* C[M,N] += A^T @ B  — A is [K,M] row-major (column index = output row M)
+   Parallelised over output rows M using OpenMP; inner N loop uses AVX2.    */
+void matmul_at_acc_f32(const float* A, const float* B, float* C, int K, int M, int N) {
+#ifdef HAVE_OPENBLAS
+    cblas_sgemm(CblasRowMajor, CblasTrans, CblasNoTrans,
+                M, N, K, 1.0f, A, M, B, N, 1.0f, C, N);
+#else
+    OMP_PARALLEL_FOR
+    for (int m = 0; m < M; m++) {
+        float* c_row = C + (size_t)m * N;
+        for (int kk = 0; kk < K; kk += TILE) {
+            int klim = kk + TILE < K ? kk + TILE : K;
+            for (int k = kk; k < klim; k++) {
+                float a = A[(size_t)k * M + m];
+                const float* b_row = B + (size_t)k * N;
+                int j = 0;
+#ifdef HAVE_AVX2
+                __m256 va = _mm256_set1_ps(a);
+                for (; j <= N - 8; j += 8)
+                    _mm256_storeu_ps(c_row + j,
+                        _mm256_fmadd_ps(va, _mm256_loadu_ps(b_row + j),
+                                            _mm256_loadu_ps(c_row + j)));
+#endif
+                for (; j < N; j++) c_row[j] += a * b_row[j];
+            }
+        }
+    }
+#endif
+}
+
 /* ── SiLU  x * sigmoid(x) ────────────────────────────────────────── */
 void silu_f32(float* dst, const float* src, int n) {
     for (int i = 0; i < n; i++) {

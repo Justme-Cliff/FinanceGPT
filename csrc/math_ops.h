@@ -16,6 +16,9 @@ void matmul_f32(const float* A, const float* B, float* C, int M, int K, int N);
 void matmul_t_f32(const float* A, const float* B, float* C, int M, int K, int N);
 /* C += A @ B */
 void matmul_acc_f32(const float* A, const float* B, float* C, int M, int K, int N);
+/* C[M,N] += A^T @ B  where A is stored row-major as [K,M], B is [K,N]
+   Uses OpenMP for M-level parallelism and AVX2 for the N inner loop. */
+void matmul_at_acc_f32(const float* A, const float* B, float* C, int K, int M, int N);
 
 /* ── Element-wise ops ───────────────────────────────────────────── */
 void vec_add_f32   (float* dst, const float* src, int n);             /* dst += src */

@@ -585,6 +585,25 @@ Activations* activations_create(const ModelConfig* c, int T)
     a->x[c->n_layers] = (float*)xcalloc((size_t)T * c->d_model, sizeof(float));
     a->logits          = (float*)xcalloc((size_t)T * c->vocab_size, sizeof(float));
 
+    /* Scratch buffers — allocated once, reused every train step */
+    a->s_qkv      = (float*)xmalloc((size_t)T * 3 * c->d_model * sizeof(float));
+    a->s_tmp      = (float*)xmalloc((size_t)T * c->d_model      * sizeof(float));
+    a->s_xn_final = (float*)xmalloc((size_t)T * c->d_model      * sizeof(float));
+    a->s_dlogits  = (float*)xmalloc((size_t)T * c->vocab_size   * sizeof(float));
+    a->s_dx_final = (float*)xmalloc((size_t)T * c->d_model      * sizeof(float));
+    a->s_dx       = (float*)xmalloc((size_t)T * c->d_model      * sizeof(float));
+    a->s_dqkv     = (float*)xmalloc((size_t)T * 3 * c->d_model  * sizeof(float));
+    a->s_dq       = (float*)xmalloc((size_t)c->n_heads * T * c->d_k * sizeof(float));
+    a->s_dk       = (float*)xmalloc((size_t)c->n_heads * T * c->d_k * sizeof(float));
+    a->s_dv       = (float*)xmalloc((size_t)c->n_heads * T * c->d_k * sizeof(float));
+    a->s_dao      = (float*)xmalloc((size_t)T * c->d_model      * sizeof(float));
+    a->s_dffn     = (float*)xmalloc((size_t)T * c->d_ff         * sizeof(float));
+    a->s_dup      = (float*)xmalloc((size_t)T * c->d_ff         * sizeof(float));
+    a->s_silu_a   = (float*)xmalloc((size_t)T * c->d_ff         * sizeof(float));
+    a->s_ffn_act  = (float*)xmalloc((size_t)T * c->d_ff         * sizeof(float));
+    a->s_preln    = (float*)xmalloc((size_t)T * c->d_model      * sizeof(float));
+    a->s_tmp2     = (float*)xmalloc((size_t)T * c->d_model      * sizeof(float));
+
     return a;
 }
 
@@ -604,6 +623,24 @@ void activations_free(Activations* a, const ModelConfig* c)
         free(a->x[l]);
     }
     free(a->x[c->n_layers]);
+
+    free(a->s_qkv);
+    free(a->s_tmp);
+    free(a->s_xn_final);
+    free(a->s_dlogits);
+    free(a->s_dx_final);
+    free(a->s_dx);
+    free(a->s_dqkv);
+    free(a->s_dq);
+    free(a->s_dk);
+    free(a->s_dv);
+    free(a->s_dao);
+    free(a->s_dffn);
+    free(a->s_dup);
+    free(a->s_silu_a);
+    free(a->s_ffn_act);
+    free(a->s_preln);
+    free(a->s_tmp2);
 
     free(a->pre_ln1);
     free(a->pre_ln2);
@@ -650,12 +687,9 @@ float model_train_step(Model* m, const int* x_ids, const int* y_ids, int T,
      * FORWARD PASS  (same as model_forward but saves activations)
      * ──────────────────────────────────────────────────────────────── */
 
-    /* Scratch buffers reused across layers */
-    float* qkv      = (float*)xmalloc((size_t)T * 3 * dm * sizeof(float));
-    float* tmp_dm   = (float*)xmalloc((size_t)T * dm * sizeof(float));
-    float* gate_pre = (float*)xmalloc((size_t)T * df * sizeof(float));
-    float* up_pre   = (float*)xmalloc((size_t)T * df * sizeof(float));
-    float* act_fwd  = (float*)xmalloc((size_t)T * df * sizeof(float));
+    /* Use pre-allocated scratch buffers — no per-step malloc */
+    float* qkv    = acts->s_qkv;
+    float* tmp_dm = acts->s_tmp;
 
     /* Embedding lookup → x[0] */
     for (int t = 0; t < T; t++) {
@@ -716,23 +750,20 @@ float model_train_step(Model* m, const int* x_ids, const int* y_ids, int T,
             rms_norm_f32(acts->pre_ln2[l] + (size_t)t * dm,
                          xo + (size_t)t * dm, b->ln2_w, dm, RMSNORM_EPS);
 
-        /* SwiGLU — save pre-activations for backward */
-        matmul_t_f32(acts->pre_ln2[l], b->ffn_gate, gate_pre, T, dm, df);
-        matmul_t_f32(acts->pre_ln2[l], b->ffn_up,   up_pre,   T, dm, df);
+        /* SwiGLU — compute directly into saved activation buffers */
+        matmul_t_f32(acts->pre_ln2[l], b->ffn_gate, acts->ffn_gate_x[l], T, dm, df);
+        matmul_t_f32(acts->pre_ln2[l], b->ffn_up,   acts->ffn_up_x[l],   T, dm, df);
 
-        memcpy(acts->ffn_gate_x[l], gate_pre, (size_t)T * df * sizeof(float));
-        memcpy(acts->ffn_up_x[l],   up_pre,   (size_t)T * df * sizeof(float));
-
-        /* act = silu(gate) * up */
-        silu_mul_f32(act_fwd, gate_pre, up_pre, T * df);
+        /* act = silu(gate) * up  (into scratch, used immediately for down proj) */
+        silu_mul_f32(acts->s_ffn_act, acts->ffn_gate_x[l], acts->ffn_up_x[l], T * df);
 
         /* Down projection → residual into xo */
-        matmul_t_f32(act_fwd, b->ffn_down, tmp_dm, T, df, dm);
+        matmul_t_f32(acts->s_ffn_act, b->ffn_down, tmp_dm, T, df, dm);
         vec_add_f32(xo, tmp_dm, T * dm);
     }
 
     /* Final RMSNorm */
-    float* xn_final = (float*)xmalloc((size_t)T * dm * sizeof(float));
+    float* xn_final = acts->s_xn_final;
     for (int t = 0; t < T; t++)
         rms_norm_f32(xn_final + (size_t)t * dm,
                      acts->x[c->n_layers] + (size_t)t * dm,
@@ -744,32 +775,23 @@ float model_train_step(Model* m, const int* x_ids, const int* y_ids, int T,
     /* ────────────────────────────────────────────────────────────────
      * LOSS  — cross-entropy with optional label smoothing
      * ──────────────────────────────────────────────────────────────── */
-    float* dlogits = (float*)xcalloc((size_t)T * vs, sizeof(float));
+    float* dlogits = acts->s_dlogits;
+    /* cross_entropy_f32 zeros dlogits internally before filling */
     float  loss    = cross_entropy_f32(acts->logits, y_ids, dlogits,
                                        T, vs, -1, label_smoothing);
 
     /* ────────────────────────────────────────────────────────────────
      * ENSURE GRADIENT BUFFERS EXIST & ZERO THEM
      * ──────────────────────────────────────────────────────────────── */
+    /* Allocate gradient buffers on first call only.
+       Zeroing is handled by optimizer_zero_grad in the training loop,
+       so gradients accumulate correctly across TRAIN_GRAD_ACCUM steps. */
     if (!m->grad_embed) {
         m->grad_embed  = (float*)xcalloc((size_t)vs * dm, sizeof(float));
         m->grad_blocks = (Block*)xcalloc((size_t)c->n_layers, sizeof(Block));
         for (int l = 0; l < c->n_layers; l++)
             block_alloc(&m->grad_blocks[l], c);
         m->grad_ln_f = (float*)xcalloc((size_t)dm, sizeof(float));
-    } else {
-        vec_zero_f32(m->grad_embed, vs * dm);
-        for (int l = 0; l < c->n_layers; l++) {
-            Block* gb = &m->grad_blocks[l];
-            vec_zero_f32(gb->ln1_w,     dm);
-            vec_zero_f32(gb->attn_qkv,  3 * dm * dm);
-            vec_zero_f32(gb->attn_proj, dm * dm);
-            vec_zero_f32(gb->ln2_w,     dm);
-            vec_zero_f32(gb->ffn_gate,  df * dm);
-            vec_zero_f32(gb->ffn_up,    df * dm);
-            vec_zero_f32(gb->ffn_down,  dm * df);
-        }
-        vec_zero_f32(m->grad_ln_f, dm);
     }
 
     /* ────────────────────────────────────────────────────────────────
@@ -781,23 +803,15 @@ float model_train_step(Model* m, const int* x_ids, const int* y_ids, int T,
        d_embed  += xn_final^T @ dlogits  →  shape [vs, dm]
        d_xn_fin  = dlogits @ embed        →  shape [T, dm]        */
 
-    /* Accumulate grad_embed from lm_head output */
-    for (int t = 0; t < T; t++) {
-        const float* dl = dlogits + (size_t)t * vs;
-        const float* xn = xn_final + (size_t)t * dm;
-        for (int v = 0; v < vs; v++) {
-            float g = dl[v];
-            if (g == 0.0f) continue;
-            float* ge = m->grad_embed + (size_t)v * dm;
-            for (int d = 0; d < dm; d++) ge[d] += g * xn[d];
-        }
-    }
+    /* grad_embed [vs,dm] += dlogits^T @ xn_final */
+    matmul_at_acc_f32(dlogits, xn_final, m->grad_embed, T, vs, dm);
 
-    float* dx_final = (float*)xmalloc((size_t)T * dm * sizeof(float));
+    float* dx_final = acts->s_dx_final;
     matmul_f32(dlogits, m->embed, dx_final, T, vs, dm);
 
     /* ── grad through final RMSNorm ──────────────────────────────── */
-    float* dx = (float*)xcalloc((size_t)T * dm, sizeof(float));
+    float* dx = acts->s_dx;
+    vec_zero_f32(dx, T * dm);
     for (int t = 0; t < T; t++) {
         rms_norm_bwd_f32(dx + (size_t)t * dm,
                          m->grad_ln_f,
@@ -808,14 +822,14 @@ float model_train_step(Model* m, const int* x_ids, const int* y_ids, int T,
     }
 
     /* ── Per-layer backward (reversed) ──────────────────────────── */
-    float* dqkv   = (float*)xmalloc((size_t)T * 3 * dm * sizeof(float));
-    float* dq     = (float*)xcalloc((size_t)nh * T * dk, sizeof(float));
-    float* dk_buf = (float*)xcalloc((size_t)nh * T * dk, sizeof(float));
-    float* dv     = (float*)xcalloc((size_t)nh * T * dk, sizeof(float));
-    float* dao    = (float*)xcalloc((size_t)T * dm,       sizeof(float));
-    float* dffn   = (float*)xmalloc((size_t)T * df * sizeof(float));
-    float* d_up   = (float*)xmalloc((size_t)T * df * sizeof(float));
-    float* silu_a = (float*)xmalloc((size_t)T * df * sizeof(float));
+    float* dqkv   = acts->s_dqkv;
+    float* dq     = acts->s_dq;
+    float* dk_buf = acts->s_dk;
+    float* dv     = acts->s_dv;
+    float* dao    = acts->s_dao;
+    float* dffn   = acts->s_dffn;
+    float* d_up   = acts->s_dup;
+    float* silu_a = acts->s_silu_a;
 
     for (int l = c->n_layers - 1; l >= 0; l--) {
         const Block* b  = &m->blocks[l];
@@ -826,100 +840,44 @@ float model_train_step(Model* m, const int* x_ids, const int* y_ids, int T,
            dx flows back through the residual connection and through
            the FFN sub-layer.  dx is the gradient w.r.t. xo.       */
 
-        /* grad ffn_down: [dm, df] += act^T @ dx
-           We need to reconstruct act = silu(gate) * up.            */
+        /* Reconstruct silu(gate) and silu(gate)*up for weight grad */
         silu_f32(silu_a, acts->ffn_gate_x[l], T * df);
-        /* silu_a now = silu(gate_pre) */
-        float* ffn_act = (float*)xmalloc((size_t)T * df * sizeof(float));
-        vec_mul_f32(ffn_act, silu_a, acts->ffn_up_x[l], T * df);
-        /* grad_ffn_down += ffn_act^T @ dx  →  [df, dm]
-           matmul_t_f32(A[M,K], B[N,K], C[M,N]) = A @ B^T
-           We want C[df,dm] = ffn_act[T,df]^T @ dx[T,dm]
-           i.e. outer product sum: C[j,d] += ffn_act[t,j]*dx[t,d]  */
-        for (int t = 0; t < T; t++) {
-            const float* fa = ffn_act + (size_t)t * df;
-            const float* dx_t = dx + (size_t)t * dm;
-            for (int j = 0; j < df; j++) {
-                float fa_j = fa[j];
-                if (fa_j == 0.0f) continue;
-                float* gd = gb->ffn_down + (size_t)j * dm;
-                for (int d = 0; d < dm; d++) gd[d] += fa_j * dx_t[d];
-            }
-        }
-        free(ffn_act);
+        vec_mul_f32(acts->s_ffn_act, silu_a, acts->ffn_up_x[l], T * df);
 
-        /* d_ffn_act = dx @ ffn_down  →  [T, df] */
-        matmul_f32(dx, b->ffn_down, dffn, T, dm, df);
+        /* grad_ffn_down [df,dm] += ffn_act^T @ dx — using OMP+AVX2 */
+        matmul_at_acc_f32(acts->s_ffn_act, dx, gb->ffn_down, T, df, dm);
 
-        /* Backward through act = silu(gate) * up:
-             d_gate_pre = silu_bwd(gate_pre) * up * d_ffn_act
-             d_up_pre   = silu(gate_pre)     *     d_ffn_act   */
-        float* d_gate_silu = (float*)xmalloc((size_t)T * df * sizeof(float));
-        /* d_gate_silu = dffn * up_pre  (chain rule: d(silu*up)/d_gate = dsilu * up) */
-        vec_mul_f32(d_gate_silu, dffn, acts->ffn_up_x[l], T * df);
-        /* silu backward */
-        silu_bwd_f32(dffn, acts->ffn_gate_x[l], d_gate_silu, T * df);
-        /* dffn now holds d_gate_pre */
-        free(d_gate_silu);
+        /* d_ffn_act = dx @ ffn_down  →  stored in s_ffn_act (reuse buffer, ffn_act no longer needed) */
+        matmul_f32(dx, b->ffn_down, acts->s_ffn_act, T, dm, df);
+        /* acts->s_ffn_act now = d_ffn_act */
 
-        /* d_up = silu_a * d_ffn_act (reconstruct d_ffn_act via dffn*up before bwd) */
-        /* We already clobbered dffn — recompute d_up from saved info.
-           d_up[t,j] = silu(gate_pre[t,j]) * d_ffn_act[t,j]
-           But d_ffn_act has been partially consumed.  Use matmul_f32 result
-           stored in dffn (pre-silu_bwd) — recompute fresh.                 */
-        matmul_f32(dx, b->ffn_down, d_up, T, dm, df); /* d_ffn_act again */
-        vec_mul_f32(d_up, silu_a, d_up, T * df);       /* d_up = silu_a * d_ffn_act */
+        /* d_gate_silu = d_ffn_act * up_pre  →  d_up (temp) */
+        vec_mul_f32(d_up, acts->s_ffn_act, acts->ffn_up_x[l], T * df);
+        /* d_gate_pre: silu backward. dffn = silu_bwd(gate_pre, d_gate_silu=d_up) */
+        silu_bwd_f32(dffn, acts->ffn_gate_x[l], d_up, T * df);
+        /* dffn now = d_gate_pre */
 
-        /* grad_ffn_gate += pre_ln2^T @ dffn  (dffn = d_gate_pre) */
-        for (int t = 0; t < T; t++) {
-            const float* pln = acts->pre_ln2[l] + (size_t)t * dm;
-            const float* dg  = dffn + (size_t)t * df;
-            for (int j = 0; j < df; j++) {
-                float dg_j = dg[j];
-                if (dg_j == 0.0f) continue;
-                float* gg = gb->ffn_gate + (size_t)j * dm;
-                for (int d = 0; d < dm; d++) gg[d] += dg_j * pln[d];
-            }
-        }
+        /* d_up_pre = silu_a * d_ffn_act (use saved d_ffn_act in s_ffn_act) */
+        vec_mul_f32(d_up, silu_a, acts->s_ffn_act, T * df);
+        /* d_up now = d_up_pre */
 
-        /* grad_ffn_up += pre_ln2^T @ d_up */
-        for (int t = 0; t < T; t++) {
-            const float* pln = acts->pre_ln2[l] + (size_t)t * dm;
-            const float* du  = d_up + (size_t)t * df;
-            for (int j = 0; j < df; j++) {
-                float du_j = du[j];
-                if (du_j == 0.0f) continue;
-                float* gu = gb->ffn_up + (size_t)j * dm;
-                for (int d = 0; d < dm; d++) gu[d] += du_j * pln[d];
-            }
-        }
+        /* grad_ffn_gate [df,dm] += d_gate_pre^T @ pre_ln2 */
+        matmul_at_acc_f32(dffn, acts->pre_ln2[l], gb->ffn_gate, T, df, dm);
 
-        /* d_pre_ln2 = dffn @ ffn_gate + d_up @ ffn_up  →  [T, dm] */
-        float* d_pre_ln2 = (float*)xcalloc((size_t)T * dm, sizeof(float));
-        matmul_f32(dffn, b->ffn_gate, d_pre_ln2, T, df, dm);
-        {
-            float* tmp_up = (float*)xcalloc((size_t)T * dm, sizeof(float));
-            matmul_f32(d_up, b->ffn_up, tmp_up, T, df, dm);
-            vec_add_f32(d_pre_ln2, tmp_up, T * dm);
-            free(tmp_up);
-        }
+        /* grad_ffn_up [df,dm] += d_up^T @ pre_ln2 */
+        matmul_at_acc_f32(d_up, acts->pre_ln2[l], gb->ffn_up, T, df, dm);
 
-        /* ── FFN RMSNorm backward ─────────────────────────────────
-           dx_residual += rms_norm_bwd(xo, ln2_w, d_pre_ln2)
-           (dx also carries through the residual skip directly)    */
-        float* dx_rms2 = (float*)xcalloc((size_t)T * dm, sizeof(float));
-        for (int t = 0; t < T; t++) {
-            rms_norm_bwd_f32(dx_rms2 + (size_t)t * dm,
-                             gb->ln2_w,
-                             acts->x[l + 1] + (size_t)t * dm,
-                             b->ln2_w,
-                             d_pre_ln2 + (size_t)t * dm,
-                             dm, RMSNORM_EPS);
-        }
-        /* dx = dx (residual skip) + dx_rms2 (through norm) */
-        vec_add_f32(dx, dx_rms2, T * dm);
-        free(d_pre_ln2);
-        free(dx_rms2);
+        /* d_pre_ln2 = d_gate_pre @ ffn_gate + d_up_pre @ ffn_up  →  s_preln */
+        matmul_f32(dffn,  b->ffn_gate, acts->s_preln, T, df, dm);
+        matmul_f32(d_up,  b->ffn_up,   acts->s_tmp2,  T, df, dm);
+        vec_add_f32(acts->s_preln, acts->s_tmp2, T * dm);
+
+        /* FFN RMSNorm backward → s_tmp2 */
+        for (int t = 0; t < T; t++)
+            rms_norm_bwd_f32(acts->s_tmp2 + (size_t)t * dm, gb->ln2_w,
+                             acts->x[l + 1] + (size_t)t * dm, b->ln2_w,
+                             acts->s_preln + (size_t)t * dm, dm, RMSNORM_EPS);
+        vec_add_f32(dx, acts->s_tmp2, T * dm);
 
         /* ── Attention backward ───────────────────────────────────
            attn path: pre_ln1 → QKV → rope → sdpa → attn_proj → residual
@@ -927,17 +885,8 @@ float model_train_step(Model* m, const int* x_ids, const int* y_ids, int T,
            The attn residual: xo = xi + attn_proj(attn_out)
            So dx flows directly as d_xi gradient, and through attn_proj.      */
 
-        /* grad_attn_proj += attn_out^T @ dx  →  [dm, dm] */
-        for (int t = 0; t < T; t++) {
-            const float* ao_t = acts->attn_out[l] + (size_t)t * dm;
-            const float* dx_t = dx + (size_t)t * dm;
-            for (int i = 0; i < dm; i++) {
-                float ao_i = ao_t[i];
-                if (ao_i == 0.0f) continue;
-                float* gp = gb->attn_proj + (size_t)i * dm;
-                for (int j = 0; j < dm; j++) gp[j] += ao_i * dx_t[j];
-            }
-        }
+        /* grad_attn_proj [dm,dm] += attn_out^T @ dx */
+        matmul_at_acc_f32(acts->attn_out[l], dx, gb->attn_proj, T, dm, dm);
 
         /* dao = dx @ attn_proj  →  [T, dm] */
         vec_zero_f32(dao, T * dm);
@@ -969,37 +918,18 @@ float model_train_step(Model* m, const int* x_ids, const int* y_ids, int T,
             }
         }
 
-        /* grad_attn_qkv += pre_ln1^T @ dqkv  →  [3*dm, dm] */
-        for (int t = 0; t < T; t++) {
-            const float* pln = acts->pre_ln1[l] + (size_t)t * dm;
-            const float* dq3 = dqkv + (size_t)t * 3 * dm;
-            for (int j = 0; j < 3 * dm; j++) {
-                float d = dq3[j];
-                if (d == 0.0f) continue;
-                float* gqkv = gb->attn_qkv + (size_t)j * dm;
-                for (int dd = 0; dd < dm; dd++) gqkv[dd] += d * pln[dd];
-            }
-        }
+        /* grad_attn_qkv [3*dm, dm] += dqkv^T @ pre_ln1 */
+        matmul_at_acc_f32(dqkv, acts->pre_ln1[l], gb->attn_qkv, T, 3 * dm, dm);
 
-        /* d_pre_ln1 = dqkv @ attn_qkv  →  [T, dm]
-           attn_qkv [3*dm, dm]: d_pre_ln1 = dqkv [T, 3*dm] @ attn_qkv [3*dm, dm] */
-        float* d_pre_ln1 = (float*)xcalloc((size_t)T * dm, sizeof(float));
-        matmul_f32(dqkv, b->attn_qkv, d_pre_ln1, T, 3 * dm, dm);
+        /* d_pre_ln1 = dqkv @ attn_qkv  →  s_preln */
+        matmul_f32(dqkv, b->attn_qkv, acts->s_preln, T, 3 * dm, dm);
 
-        /* Attention RMSNorm backward → dx */
-        float* dx_rms1 = (float*)xcalloc((size_t)T * dm, sizeof(float));
-        for (int t = 0; t < T; t++) {
-            rms_norm_bwd_f32(dx_rms1 + (size_t)t * dm,
-                             gb->ln1_w,
-                             acts->x[l] + (size_t)t * dm,
-                             b->ln1_w,
-                             d_pre_ln1 + (size_t)t * dm,
-                             dm, RMSNORM_EPS);
-        }
-        /* dx += dx_rms1 (through norm) — residual skip already in dx */
-        vec_add_f32(dx, dx_rms1, T * dm);
-        free(d_pre_ln1);
-        free(dx_rms1);
+        /* Attention RMSNorm backward → s_tmp2 */
+        for (int t = 0; t < T; t++)
+            rms_norm_bwd_f32(acts->s_tmp2 + (size_t)t * dm, gb->ln1_w,
+                             acts->x[l] + (size_t)t * dm, b->ln1_w,
+                             acts->s_preln + (size_t)t * dm, dm, RMSNORM_EPS);
+        vec_add_f32(dx, acts->s_tmp2, T * dm);
 
         /* ── Accumulate embedding gradients from this layer's dx ──
            dx is w.r.t. x[l] (before the layer).  For the embedding
@@ -1023,24 +953,7 @@ float model_train_step(Model* m, const int* x_ids, const int* y_ids, int T,
         }
     }
 
-    /* ── Cleanup ─────────────────────────────────────────────────── */
-    free(qkv);
-    free(tmp_dm);
-    free(gate_pre);
-    free(up_pre);
-    free(act_fwd);
-    free(xn_final);
-    free(dlogits);
-    free(dx_final);
-    free(dx);
-    free(dqkv);
-    free(dq);
-    free(dk_buf);
-    free(dv);
-    free(dao);
-    free(dffn);
-    free(d_up);
-    free(silu_a);
+    /* Scratch buffers are owned by Activations — not freed per-step. */
 
     return loss;
 }

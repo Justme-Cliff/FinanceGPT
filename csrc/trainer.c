@@ -382,7 +382,7 @@ static void print_bar(int cur, int total, const char* suffix) {
     int filled = (total > 0) ? (int)((long long)cur * W / total) : 0;
     printf("\r  [");
     for (int i = 0; i < W; i++) printf(i < filled ? "\xe2\x96\x88" : "\xe2\x96\x91");
-    printf("] %3d%%  %s", total > 0 ? (int)((long long)cur * 100 / total) : 0, suffix);
+    printf("] %3d%%  %-90s", total > 0 ? (int)((long long)cur * 100 / total) : 0, suffix);
     fflush(stdout);
 }
 
@@ -693,7 +693,7 @@ void train(const char* csv_file) {
     /* Split train/val */
     size_t split = (size_t)(total_tokens * (1.0f - TRAIN_VAL_SPLIT));
     int block_size = TRAIN_BLOCK_SIZE;
-    int stride     = block_size / 2;
+    int stride     = TRAIN_STRIDE;
 
     int* train_toks = (int*)xmalloc(split * sizeof(int));
     int* val_toks   = (int*)xmalloc((total_tokens - split) * sizeof(int));
@@ -781,13 +781,19 @@ void train(const char* csv_file) {
             }
 
             /* Progress bar every 10 steps */
-            if (si % 10 == 0) {
+            if (si % 10 == 0 && si > 0) {
                 float avg = ep_loss_sum / ep_steps;
-                char suf[80];
+                double elapsed = now_sec() - ep_t0;
+                double secs_per_step = elapsed / (double)si;
+                double eta_sec = secs_per_step * (double)(n_train - si);
+                int eta_m = (int)(eta_sec / 60.0);
+                int eta_s = (int)(eta_sec) % 60;
+                char suf[120];
                 snprintf(suf, sizeof(suf),
-                         "%zu/%zu  loss=%.4f  ppl=%.1f  lr=%.1e",
+                         "%zu/%zu  loss=%.4f  ppl=%.1f  lr=%.1e  eta=%dm%02ds",
                          si, n_train, avg,
-                         expf(avg < 10.0f ? avg : 10.0f), cur_lr);
+                         expf(avg < 10.0f ? avg : 10.0f), cur_lr,
+                         eta_m, eta_s);
                 print_bar((int)si, (int)n_train, suf);
             }
         }

@@ -43,7 +43,7 @@ else
 endif
 
 # ── OpenMP detection ─────────────────────────────────────────────────
-OMP_CHECK := $(shell echo 'int main(){return 0;}' | $(CC) -fopenmp -x c - -o /dev/null 2>/dev/null && echo yes)
+OMP_CHECK := $(shell echo 'int main(){return 0;}' | $(CC) -fopenmp -x c - -o _omp_test.exe 2>/dev/null && echo yes; rm -f _omp_test.exe 2>/dev/null)
 ifeq ($(OMP_CHECK),yes)
     CFLAGS  += -fopenmp
     LDFLAGS += -fopenmp

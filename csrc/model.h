@@ -117,6 +117,26 @@ typedef struct {
     float** x;          /* residual stream [n_layers+1][T * d_model] */
     float*  logits;     /* [T * vocab_size] */
     int     T;
+
+    /* ── Scratch buffers (pre-allocated, reused every train step) ──────
+       Eliminates ~100GB/epoch of malloc/free overhead.                  */
+    float*  s_qkv;       /* [T * 3 * d_model]   forward QKV temp         */
+    float*  s_tmp;       /* [T * d_model]        forward/backward temp    */
+    float*  s_xn_final;  /* [T * d_model]        post-final-RMSNorm       */
+    float*  s_dlogits;   /* [T * vocab_size]     logit gradients          */
+    float*  s_dx_final;  /* [T * d_model]        dx from lm_head          */
+    float*  s_dx;        /* [T * d_model]        running backward grad     */
+    float*  s_dqkv;      /* [T * 3 * d_model]    QKV gradients            */
+    float*  s_dq;        /* [n_heads * T * d_k]                           */
+    float*  s_dk;        /* [n_heads * T * d_k]                           */
+    float*  s_dv;        /* [n_heads * T * d_k]                           */
+    float*  s_dao;       /* [T * d_model]        attn output grad         */
+    float*  s_dffn;      /* [T * d_ff]           gate grad / d_ffn_act    */
+    float*  s_dup;       /* [T * d_ff]           up grad                  */
+    float*  s_silu_a;    /* [T * d_ff]           silu(gate) activation    */
+    float*  s_ffn_act;   /* [T * d_ff]           silu(gate)*up            */
+    float*  s_preln;     /* [T * d_model]        shared pre-norm grad     */
+    float*  s_tmp2;      /* [T * d_model]        secondary temp           */
 } Activations;
 
 Activations* activations_create (const ModelConfig* cfg, int T);
