@@ -16,9 +16,9 @@
 #define TRAIN_EPOCHS         8
 #define TRAIN_BATCH_SIZE     64
 #define TRAIN_GRAD_ACCUM     4
-#define TRAIN_LR             4e-4f
+#define TRAIN_LR             2.5e-4f
 #define TRAIN_MIN_LR         5e-6f
-#define TRAIN_WARMUP_STEPS   100
+#define TRAIN_WARMUP_STEPS   150
 #define TRAIN_GRAD_CLIP      1.0f
 #define TRAIN_LABEL_SMOOTH   0.05f
 #define TRAIN_VAL_SPLIT      0.10f

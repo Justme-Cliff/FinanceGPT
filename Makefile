@@ -76,7 +76,9 @@ $(TARGET): $(OBJS)
 	@echo "        ./$(TARGET) /info    (show stats)"
 	@echo ""
 
-$(SRCDIR)/%.o: $(SRCDIR)/%.c
+HDRS    := $(wildcard $(SRCDIR)/*.h)
+
+$(SRCDIR)/%.o: $(SRCDIR)/%.c $(HDRS)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
