@@ -764,7 +764,7 @@ void train(const char* csv_file) {
             ep_loss_sum += loss;
             ep_steps++;
             global_step++;
-            cur_lr = lr_schedule(global_step, total_steps, TRAIN_LR, TRAIN_MIN_LR, TRAIN_WARMUP_STEPS);
+            cur_lr = lr_schedule((int)(si + 1), (int)n_train, TRAIN_LR, TRAIN_MIN_LR, TRAIN_WARMUP_STEPS);
             history_add_step(hist, global_step, loss, cur_lr, 0.0f);
 
             /* Optimizer step every TRAIN_GRAD_ACCUM samples */
