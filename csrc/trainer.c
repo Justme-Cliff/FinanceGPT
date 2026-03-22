@@ -381,7 +381,7 @@ static void print_bar(int cur, int total, const char* suffix) {
     const int W = 36;
     int filled = (total > 0) ? (int)((long long)cur * W / total) : 0;
     printf("\r  [");
-    for (int i = 0; i < W; i++) printf(i < filled ? "\xe2\x96\x88" : "\xe2\x96\x91");
+    for (int i = 0; i < W; i++) printf(i < filled ? "#" : "-");
     printf("] %3d%%  %-90s", total > 0 ? (int)((long long)cur * 100 / total) : 0, suffix);
     fflush(stdout);
 }
@@ -681,9 +681,11 @@ void train(const char* csv_file) {
         free(ids);
         free(texts[i]);
 
-        char suf[64];
-        snprintf(suf, sizeof(suf), "%d/%d samples", i + 1, n_texts);
-        print_bar(i + 1, n_texts, suf);
+        if (i % 20 == 0 || i == n_texts - 1) {
+            char suf[64];
+            snprintf(suf, sizeof(suf), "%d/%d samples", i + 1, n_texts);
+            print_bar(i + 1, n_texts, suf);
+        }
     }
     free(texts);
     printf("\n");

@@ -266,10 +266,10 @@ What this does:
 5. Validates every epoch, saves the best checkpoint automatically
 6. Early stopping (patience=3) prevents overfitting
 
-Training progress is shown with Unicode progress bars:
+Training progress is shown with ASCII progress bars:
 ```
   Epoch 1/8
-  [████████████████████░░░░░░░░░░░░░░░░] 57%  step 420 | loss 3.241 | lr 1.82e-04
+  [####################----------------]  57%  step 420 | loss 3.241 | ppl 25.57 | lr 1.82e-04 | ETA 4m 12s
 ```
 
 Estimated training time on Ryzen 3 5300U (8 threads, OpenBLAS):
@@ -437,6 +437,8 @@ All hyperparameters live in `csrc/config.h` — the single source of truth. Chan
 /* ── Training ───────────────────────────────────────────────────── */
 #define TRAIN_EPOCHS         8
 #define TRAIN_BATCH_SIZE     64
+#define TRAIN_BLOCK_SIZE     256    /* context window during training */
+#define TRAIN_STRIDE         256    /* sliding-window step size */
 #define TRAIN_GRAD_ACCUM     8      /* gradient accumulation steps */
 #define TRAIN_LR             2e-4f  /* peak learning rate */
 #define TRAIN_MIN_LR         5e-6f  /* cosine decay floor */
@@ -553,7 +555,7 @@ financegpt/
 │   ├── trainer.h / trainer.c    # Training loop: gradient accumulation
 │   │                            # Cosine LR schedule · early stopping
 │   │                            # Dataset: sliding-window tokenization
-│   │                            # Unicode progress bars
+│   │                            # ASCII progress bars with ETA
 │   │
 │   ├── knowledge_base.h / .c    # BM25 retrieval · inverted index
 │   │                            # Finance synonym expansion · bigrams

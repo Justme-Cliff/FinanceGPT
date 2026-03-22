@@ -873,6 +873,7 @@ float model_train_step(Model* m, const int* x_ids, const int* y_ids, int T,
         vec_add_f32(acts->s_preln, acts->s_tmp2, T * dm);
 
         /* FFN RMSNorm backward → s_tmp2 */
+        vec_zero_f32(acts->s_tmp2, T * dm);
         for (int t = 0; t < T; t++)
             rms_norm_bwd_f32(acts->s_tmp2 + (size_t)t * dm, gb->ln2_w,
                              acts->x[l + 1] + (size_t)t * dm, b->ln2_w,
@@ -925,6 +926,7 @@ float model_train_step(Model* m, const int* x_ids, const int* y_ids, int T,
         matmul_f32(dqkv, b->attn_qkv, acts->s_preln, T, 3 * dm, dm);
 
         /* Attention RMSNorm backward → s_tmp2 */
+        vec_zero_f32(acts->s_tmp2, T * dm);
         for (int t = 0; t < T; t++)
             rms_norm_bwd_f32(acts->s_tmp2 + (size_t)t * dm, gb->ln1_w,
                              acts->x[l] + (size_t)t * dm, b->ln1_w,
