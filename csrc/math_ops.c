@@ -291,7 +291,7 @@ void rms_norm_bwd_f32(float* dx, float* dweight,
         float norm_xi = x[i] * inv;
         dweight[i]   += dout[i] * norm_xi;
         dx[i]        += inv * w[i] * dout[i]
-                      - inv3 * w[i] * dout[i] * (1.0f / (float)n) * dot;
+                      - inv3 * x[i] * (1.0f / (float)n) * dot;
     }
 }
 

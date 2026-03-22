@@ -872,7 +872,15 @@ float model_train_step(Model* m, const int* x_ids, const int* y_ids, int T,
         matmul_f32(d_up,  b->ffn_up,   acts->s_tmp2,  T, df, dm);
         vec_add_f32(acts->s_preln, acts->s_tmp2, T * dm);
 
-        /* FFN RMSNorm backward → s_tmp2 */
+        /* FFN RMSNorm backward → s_tmp2
+           x[l+1] currently holds the post-FFN output.  The norm's forward
+           input was the post-attn, pre-FFN state.  Recover it by subtracting
+           the FFN down-projection output (recompute ffn_act first since
+           s_ffn_act was overwritten with d_ffn_act during the backward above). */
+        vec_mul_f32(acts->s_ffn_act, silu_a, acts->ffn_up_x[l], T * df);
+        matmul_t_f32(acts->s_ffn_act, b->ffn_down, acts->s_qkv, T, df, dm);
+        for (int ti = 0; ti < T * dm; ti++) acts->x[l + 1][ti] -= acts->s_qkv[ti];
+
         vec_zero_f32(acts->s_tmp2, T * dm);
         for (int t = 0; t < T; t++)
             rms_norm_bwd_f32(acts->s_tmp2 + (size_t)t * dm, gb->ln2_w,
