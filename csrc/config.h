@@ -13,18 +13,18 @@
 #define DROPOUT       0.10f
 
 /* ── Training ───────────────────────────────────────────────────── */
-#define TRAIN_EPOCHS         8
+#define TRAIN_EPOCHS         10
 #define TRAIN_BATCH_SIZE     64
-#define TRAIN_GRAD_ACCUM     4
-#define TRAIN_LR             3e-4f
-#define TRAIN_MIN_LR         5e-6f
-#define TRAIN_WARMUP_STEPS   200
+#define TRAIN_GRAD_ACCUM     1
+#define TRAIN_LR             8e-4f
+#define TRAIN_MIN_LR         5e-5f
+#define TRAIN_WARMUP_STEPS   400
 #define TRAIN_GRAD_CLIP      1.0f
 #define TRAIN_LABEL_SMOOTH   0.05f
 #define TRAIN_VAL_SPLIT      0.10f
-#define TRAIN_BLOCK_SIZE     256
-#define TRAIN_STRIDE         256
-#define TRAIN_PATIENCE       3
+#define TRAIN_BLOCK_SIZE     128
+#define TRAIN_STRIDE         64
+#define TRAIN_PATIENCE       10
 #define TRAIN_LR_RESTART_STEPS   350
 #define TRAIN_LR_RESTART_MULT    2.0f
 
