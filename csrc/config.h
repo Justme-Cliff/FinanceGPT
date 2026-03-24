@@ -10,10 +10,10 @@
 #define D_FF          1536
 #define MAX_SEQ_LEN   512
 #define D_K           (D_MODEL / N_HEADS)   /* 64 */
-#define DROPOUT       0.10f
+#define DROPOUT       0.0f
 
 /* ── Training ───────────────────────────────────────────────────── */
-#define TRAIN_EPOCHS         10
+#define TRAIN_EPOCHS         20
 #define TRAIN_BATCH_SIZE     64
 #define TRAIN_GRAD_ACCUM     1
 #define TRAIN_LR             2e-3f
@@ -22,7 +22,7 @@
 #define TRAIN_GRAD_CLIP      1.0f
 #define TRAIN_LABEL_SMOOTH   0.0f
 #define TRAIN_VAL_SPLIT      0.10f
-#define TRAIN_BLOCK_SIZE     64
+#define TRAIN_BLOCK_SIZE     256
 #define TRAIN_STRIDE         256
 #define TRAIN_PATIENCE       10
 #define TRAIN_LR_RESTART_STEPS   150
@@ -60,7 +60,7 @@
 #define ADAM_BETA1           0.9f
 #define ADAM_BETA2           0.95f
 #define ADAM_EPS             1e-8f
-#define ADAM_WEIGHT_DECAY    0.1f
+#define ADAM_WEIGHT_DECAY    0.01f
 
 /* ── RoPE ───────────────────────────────────────────────────────── */
 #define ROPE_THETA           10000.0f

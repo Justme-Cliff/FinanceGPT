@@ -26,6 +26,8 @@
    On POSIX this is a no-op. */
 #ifdef PLATFORM_WINDOWS
 static void enable_vt(void) {
+    SetConsoleOutputCP(65001);
+    SetConsoleCP(65001);
     HANDLE h = GetStdHandle(STD_OUTPUT_HANDLE);
     if (h == INVALID_HANDLE_VALUE) return;
     DWORD mode = 0;
